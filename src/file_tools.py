@@ -116,6 +116,15 @@ def read_groundtruth(dataset_name):
     return landmark_gt, data
 
 
+def measure_data_at_time(t_rel, start_time, data):
+    # we want to return odometry for a robot at the time as well as
+    # measurements (and std. dev).
+    # return [v_odom, w_odom, meas_1, std_1, meas_2, std_2, ..., meas_20, std_20]
+    # where std_n is np.inf if there isn't a measurement at that time.
+    
+    return
+
+
 def get_dataset(idx, fs=50):
     """
     Return a complete dataset, with all measurement, odometry, and ground-truth
