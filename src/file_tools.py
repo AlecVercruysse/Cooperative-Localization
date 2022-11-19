@@ -7,6 +7,19 @@ import pdb
 
 
 def read_dat(fname):
+    """
+    read a single dataset .dat file
+
+    Parameters:
+    ----------
+    fname: str
+       name of the file to open
+
+    Returns:
+    -------
+    df: pandas.DataFrame
+       the data in the dat file.
+    """
     with open(fname, "r") as f:
         lines = f.readlines()
         header = lines[3][2:].strip().split("    ")
@@ -16,7 +29,22 @@ def read_dat(fname):
 
 
 def get_barcode_mapping(dataset_name):
-    mapping = {}
+    """
+    Make a dictionary with the barcode values as keys
+    and the corresponding subject number as the value.
+    subjects 1-5 are the robots, 16-20 are the landmarks.
+
+    Parameters:
+    ----------
+    dataset_name: str
+       name of the dataset (e.g. MRCLAM_Dataset1)
+
+    Returns:
+    -------
+    mapping: dict
+       mapping with integer keys, integer values.
+    """
+    Mapping = {}
     path = f"../data/{dataset_name}/"
     data = read_dat(path + "Barcodes.dat")
     for i in data.index:
@@ -27,6 +55,21 @@ def get_barcode_mapping(dataset_name):
 
 
 def read_experimental(dataset_name="MRCLAM_Dataset1"):
+    """
+    Read all measured (e.g. not ground-truth) data from a dataset.
+
+    Parameters:
+    ----------
+    dataset_name: str
+       name of the dataset (e.g. MRCLAM_Dataset1)
+
+    Returns:
+    -------
+    data: list, length 5, of dictionaries
+       a list of 5 dictionaries, each corresponding to a robot,
+       with "measurement" and "odometry" as keys, corresponding
+       to the measurement and odometry dat files in the dataset.
+    """
     path = f"../data/{dataset_name}/"
     barcode_mapping = get_barcode_mapping(dataset_name)  # use mapping
 
@@ -45,6 +88,22 @@ def read_experimental(dataset_name="MRCLAM_Dataset1"):
 
 
 def read_groundtruth(dataset_name):
+    """
+    Read all groundtruth data from a dataset.
+
+    Parameters:
+    ----------
+    dataset_name: str
+       name of the dataset (e.g. MRCLAM_Dataset1)
+
+    Returns:
+    -------
+    landmark_gt: pandas.DataFrame
+       A dataframe containing the ground-truth landmark locations
+    data: list, length 5, of dictionaries, with single key "gt"
+       The same format as the return value of `read_experimental`,
+       but each dictionary contains only robot ground-truth data.
+    """
     # return landmarkgt, [{robotgt}, {robotgt}, ... ]
     path = f"../data/{dataset_name}/"
     landmark_gt = read_dat(path + "Landmark_Groundtruth.dat")
@@ -58,6 +117,24 @@ def read_groundtruth(dataset_name):
 
 
 def get_dataset(idx, fs=50):
+    """
+    Return a complete dataset, with all measurement, odometry, and ground-truth
+    sampled at a sampling interval of `fs`. Performs linear interpolation of
+    measured data. If a particular measurement is not available at that time,
+    the np.nan is used as the N/A value.
+
+    Parameters:
+    ----------
+    idx: int
+       A value from 1-9 describing which dataset to use.
+    fs: int
+       The sampling frequency in Hz.
+
+    Returns:
+    -------
+    data: pandas.DataFrame
+       All sampled data from that dataset.
+    """
     datasets = sorted(glob("../data/*/"), key=lambda x: x[-2])
     dataset_name = datasets[idx-1]
 
