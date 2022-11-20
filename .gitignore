@@ -1,3 +1,4 @@
 *.zip
 MRSLAM_Dataset*/
 MRCLAM_Dataset*/
+*.gif

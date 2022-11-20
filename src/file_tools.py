@@ -147,6 +147,8 @@ def get_dataset(idx, fs=50):
     -------
     data: list, length 5, of pandas.DataFrame
        All sampled data from that dataset for each robot.
+    landmark_gt: pandas.DataFrame
+       ground-truth landmark location information.
     """
     try:
         with cwd(os.path.dirname(sys.argv[0])): # ensure in src/ dir
@@ -157,7 +159,8 @@ def get_dataset(idx, fs=50):
                 print(f"found cache at {cache_name}")
                 with open(cache_name, "rb") as f:
                     dfs = pickle.load(f)
-                    return dfs
+                    landmark_gt, _ = read_groundtruth(dataset_name)
+                    return dfs, landmark_gt
             else:
                 print(f"no cache for this dataset & fs found, generating...")
                 experimental_data = read_experimental(dataset_name)
@@ -255,4 +258,4 @@ def get_dataset(idx, fs=50):
             os.makedirs(os.path.dirname(cache_name))
         with open(cache_name, "wb") as f:
             pickle.dump(dfs, f)
-    return dfs
+    return dfs, landmark_gt
