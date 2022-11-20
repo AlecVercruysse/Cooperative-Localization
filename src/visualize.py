@@ -165,7 +165,7 @@ class SceneAnimation:
         self.xb, self.yb = get_lims(dfs, landmark_gt)
         self.fig, self.ax = plt.subplots(figsize=self.figsize)
         self.interval = int(1000*undersample/fs/speedup)
-        
+
         pause_time = 3  # seconds
         pause_frames = int(pause_time / (1000*undersample/fs/speedup))
         self.ani = FuncAnimation(fig=self.fig,
@@ -241,6 +241,8 @@ def plot_one_step(series, landmark_gt=None,
                   fname=None, keys=["gt_x", "gt_y", "gt_theta"]):
     """
     Create a matplotlib plot describing a single time frame.
+    Plots landmark and robot positions using the ground-truth
+    dataframes.
 
     Parameters:
     ----------

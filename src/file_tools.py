@@ -6,19 +6,20 @@ from glob import glob
 import pickle
 import os
 import sys
-import pdb
+# import pdb
 from contextlib import contextmanager
 
 
 @contextmanager
 def cwd(path):
     oldpwd = os.getcwd()
-    if len(path) != 0: # i.e. we're not already in that dir
+    if len(path) != 0:  # i.e. we're not already in that dir
         os.chdir(path)
     try:
         yield
     finally:
         os.chdir(oldpwd)
+
 
 def read_dat(fname):
     """
@@ -91,10 +92,14 @@ def read_experimental(dataset_name="MRCLAM_Dataset1"):
     data = []
     for i, robotname in enumerate(robots):
         data_dict = {}
-        data_dict["measurement"] = read_dat(path + f"{robotname}_Measurement.dat")
-        data_dict["measurement"]["Barcode #"] = data_dict["measurement"]["Subject #"]
-        data_dict["measurement"]["Subject #"] = data_dict["measurement"]["Subject #"].apply(
-            lambda x: barcode_mapping[int(x)] if int(x) in barcode_mapping else np.nan
+        data_dict["measurement"] = read_dat(path +
+                                            f"{robotname}_Measurement.dat")
+        data_dict["measurement"]["Barcode #"] = \
+            data_dict["measurement"]["Subject #"]
+        data_dict["measurement"]["Subject #"] = \
+            data_dict["measurement"]["Subject #"].apply(
+                lambda x: barcode_mapping[int(x)]
+                if int(x) in barcode_mapping else np.nan
         )
         data_dict["odometry"] = read_dat(path + f"{robotname}_Odometry.dat")
         data += [data_dict]
@@ -129,6 +134,7 @@ def read_groundtruth(dataset_name):
         data += [data_dict]
     return landmark_gt, data
 
+
 def get_dataset(idx, fs=50):
     """
     Return a complete dataset, with all measurement, odometry, and ground-truth
@@ -151,10 +157,11 @@ def get_dataset(idx, fs=50):
        ground-truth landmark location information.
     """
     try:
-        with cwd(os.path.dirname(sys.argv[0])): # ensure in src/ dir
+        with cwd(os.path.dirname(sys.argv[0])):  # ensure in src/ dir
             datasets = sorted(glob("../data/*/"), key=lambda x: x[-2])
             dataset_name = datasets[idx-1]
-            cache_name = dataset_name.replace("/data/", "/data/processed/") + f"{fs}.pkl"
+            cache_name = dataset_name.replace("/data/", "/data/processed/") + \
+                f"{fs}.pkl"
             if os.path.exists(cache_name):
                 print(f"found cache at {cache_name}")
                 with open(cache_name, "rb") as f:
@@ -162,7 +169,7 @@ def get_dataset(idx, fs=50):
                     landmark_gt, _ = read_groundtruth(dataset_name)
                     return dfs, landmark_gt
             else:
-                print(f"no cache for this dataset & fs found, generating...")
+                print("no cache for this dataset & fs found, generating...")
                 experimental_data = read_experimental(dataset_name)
                 landmark_gt, robot_gt = read_groundtruth(dataset_name)
     except:
@@ -171,10 +178,12 @@ def get_dataset(idx, fs=50):
     stop_time = np.inf
     start_time = -1
     for i, data_dict in enumerate(experimental_data):
-        last_meas = data_dict["measurement"].loc[len(data_dict["measurement"])-1]["Time [s]"]
+        last_meas = data_dict["measurement"] \
+            .loc[len(data_dict["measurement"])-1]["Time [s]"]
         start_meas = data_dict["measurement"].loc[0]["Time [s]"]
 
-        last_odom = data_dict["odometry"].loc[len(data_dict["odometry"])-1]["Time [s]"]
+        last_odom = data_dict["odometry"]\
+            .loc[len(data_dict["odometry"])-1]["Time [s]"]
         start_odom = data_dict["odometry"].loc[0]["Time [s]"]
 
         robot_stop_time = min(last_meas, last_odom)
@@ -184,7 +193,7 @@ def get_dataset(idx, fs=50):
         start_time = max(start_time, robot_start_time)
 
     rel_time = np.arange(int((stop_time - start_time)*fs)) / fs
-    
+
     # start by resampling measurements:
     # shape (5 robots, 20 measurable things, T timesteps, 2 (range, bearing))
     measurements = np.full((5, 20, len(rel_time), 2), np.nan)
@@ -193,67 +202,78 @@ def get_dataset(idx, fs=50):
         meas = robot["measurement"]
 
         # round measurement time to nearest sample index
-        meas["idx"] = meas["Time [s]"].apply(lambda x: np.round((x - start_time)*fs))
+        meas["idx"] = meas["Time [s]"].apply(
+            lambda x: np.round((x - start_time)*fs))
         for idx in tqdm(meas.index):
             row = meas.iloc[idx]
-            # if the measurement occurs after the starting time and before the ending time
+            # if the measurement occurs after the starting time
+            # and before the ending time
             if row["idx"] >= 0 and row["idx"] < len(rel_time):
-                if not np.isnan(row["Subject #"]): # there are some invalid barcodes...
-                    measurements[i, int(row["Subject #"])-1, int(row["idx"])] = \
-                        (row["range [m]"], row["bearing [rad]"])
-                    
+                if not np.isnan(row["Subject #"]):  # some invalid barcodes...
+                    measurements[i, int(row["Subject #"])-1, int(row["idx"])] \
+                        = (row["range [m]"], row["bearing [rad]"])
+
     # resample odometry and ground truth:
-    
+
     # shape (5 robots, T timestamps, 2 (forward v, angular w))
     odometry = np.zeros((5, len(rel_time), 2))
     for i, measured in enumerate(experimental_data):
         print(f"processing odometry for robot {i+1}:")
         odom = measured["odometry"]
-        for it, t in tqdm(enumerate(rel_time + start_time), total=len(rel_time)):
+        for it, t in tqdm(enumerate(rel_time + start_time),
+                          total=len(rel_time)):
             idx_before = np.where(odom["Time [s]"] - t < 0)[0][-1]
-            idx_after  = idx_before + 1
+            idx_after = idx_before + 1
             # pdb.set_trace()
-            mix = (t - odom["Time [s]"][idx_before]) / (odom["Time [s]"][idx_after] - odom["Time [s]"][idx_before])
+            mix = (t - odom["Time [s]"][idx_before]) / \
+                (odom["Time [s]"][idx_after] - odom["Time [s]"][idx_before])
             odometry[i, it] = (
-                odom["forward velocity [m/s]"][idx_before] + \
-                mix * (odom["forward velocity [m/s]"][idx_after] - odom["forward velocity [m/s]"][idx_before]),
-                odom["angular velocity[rad/s]"][idx_before] + \
-                mix * (odom["angular velocity[rad/s]"][idx_after] - odom["angular velocity[rad/s]"][idx_before])
+                odom["forward velocity [m/s]"][idx_before] +
+                mix * (odom["forward velocity [m/s]"][idx_after] -
+                       odom["forward velocity [m/s]"][idx_before]),
+                odom["angular velocity[rad/s]"][idx_before] +
+                mix * (odom["angular velocity[rad/s]"][idx_after] -
+                       odom["angular velocity[rad/s]"][idx_before])
             )
-    
+
     # shape (5 robots, T timestamps, 3 (x, y, orientation))
     gt = np.zeros((5, len(rel_time), 3))
     for i, gtdict in enumerate(robot_gt):
         print(f"processing ground truth for robot {i+1}:")
         gt_df = gtdict["gt"]
-        for it, t in tqdm(enumerate(rel_time + start_time), total=len(rel_time)):
+        for it, t in tqdm(enumerate(rel_time + start_time),
+                          total=len(rel_time)):
             idx_before = np.where(gt_df["Time [s]"] - t < 0)[0][-1]
-            idx_after  = idx_before + 1
-            mix = (t - gt_df["Time [s]"][idx_before]) / (gt_df["Time [s]"][idx_after] - gt_df["Time [s]"][idx_before])
+            idx_after = idx_before + 1
+            mix = (t - gt_df["Time [s]"][idx_before]) / \
+                (gt_df["Time [s]"][idx_after] - gt_df["Time [s]"][idx_before])
             gt[i, it] = (
-                gt_df["x [m]"][idx_before] + \
+                gt_df["x [m]"][idx_before] +
                 mix * (gt_df["x [m]"][idx_after] - gt_df["x [m]"][idx_before]),
-                gt_df["y [m]"][idx_before] + \
+                gt_df["y [m]"][idx_before] +
                 mix * (gt_df["y [m]"][idx_after] - gt_df["y [m]"][idx_before]),
-                gt_df["orientation [rad]"][idx_before] + \
-                mix * (gt_df["orientation [rad]"][idx_after] - gt_df["orientation [rad]"][idx_before])
+                gt_df["orientation [rad]"][idx_before] +
+                mix * (gt_df["orientation [rad]"][idx_after] -
+                       gt_df["orientation [rad]"][idx_before])
             )
-    
+
     # assemble dataframes:
     dfs = []
     nrobots = gt.shape[0]
-    for i in range(nrobots): # in robots
+    for i in range(nrobots):  # in robots
         df = pd.DataFrame(np.concatenate((
-            odometry[i].T, # 2, t
-            np.swapaxes(measurements[i], 1, 2).reshape(2*20, len(rel_time)), # 40, (range, bearing)*20 objs
+            odometry[i].T,  # 2, t
+            # 40, (range, bearing)*20 objs
+            np.swapaxes(measurements[i], 1, 2).reshape(2*20, len(rel_time)),
             gt[i].T
-        )).T, columns = ["v", "w"] +
-                          [f"{meas}_{num+1}" for num in range(20) for meas in ["r", "b"]] +
+        )).T, columns=["v", "w"] +
+                          [f"{meas}_{num+1}" for num in range(20)
+                           for meas in ["r", "b"]] +
                           ["gt_x", "gt_y", "gt_theta"])
         dfs += [df]
 
     print("caching processed data...")
-    with cwd(os.path.dirname(sys.argv[0])): # ensure in src/ dir
+    with cwd(os.path.dirname(sys.argv[0])):  # ensure in src/ dir
         if not os.path.exists(os.path.dirname(cache_name)):
             os.makedirs(os.path.dirname(cache_name))
         with open(cache_name, "wb") as f:
