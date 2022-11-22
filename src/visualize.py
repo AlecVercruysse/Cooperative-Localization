@@ -1,13 +1,10 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
-
+from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
 import numpy as np
-# import pandas as pd
-# from tqdm import tqdm
-import threading
 
 import pdb
+import os
 import code
 
 colors = ["red", "orange", "lime", "cyan", "orchid"]
@@ -23,13 +20,13 @@ def get_cov_ellipse_params(x, y, cov):
     return alpha, major, minor
 
 
-def get_cov_ellipse(x, y, cov, color, alpha=1):
+def get_cov_ellipse(x, y, cov, color, opacity=1):
     """
     Returns an ellipse patch for a covariance matrix of x,y uncertainty.
     """
     alpha, major, minor = get_cov_ellipse_params(x, y, cov)
     el = mpl.patches.Ellipse((x, y), major, minor, np.rad2deg(alpha),
-                             color=(color), alpha=alpha)
+                             color=(color), alpha=opacity)
     return el
 
 
@@ -105,12 +102,12 @@ class RobotVisual:
     def init_est_pose(self):
         (x, y, theta), cov = self.robot.get_est_pos(0)
         cov = cov[:2, :2]  # just x, y
-        self.est_pos = get_cov_ellipse(x, y, cov, color=self.color, alpha=0.1)
+        self.est_pos = get_cov_ellipse(x, y, cov, color=self.color, opacity=0.1)
         self.est_pose = plt.Line2D([x,
                                     x+self.wheelbase*np.cos(theta)],
                                    [y,
                                     y+self.wheelbase*np.sin(self.theta)],
-                                   color="black", alpha=0.3)
+                                   color="black", alpha=0.7)
 
     def update_est_pos(self, frame):
         (x, y, theta), cov = self.robot.get_est_pos(frame)
@@ -137,16 +134,44 @@ class RobotVisual:
                                                   color=self.color)]
 
     def update_est_landmarks(self, frame):
-        names, info = zip(*[(idx, self.robot.get_est_landmark(0, idx))
+        names, info = zip(*[(idx, self.robot.get_est_landmark(frame, idx))
                             for idx in self.landmarks])
         location, cov = zip(*info)  # don't use covariance for now
         x, y = np.array(location).T
-        self.landmark_est.set_offsets((x, y))
+        self.landmark_est.set_offsets(np.array([x, y]).T)
         for i, (xi, yi) in enumerate(zip(x, y)):
             self.landmark_labels[i].set_position((xi, yi))
 
     def init_measurements(self):
         self.measurement_lines = []
+        self.measurement_labels = []
+        self.measurement_last_frame = 0
+
+    def update_measurements(self, frame):
+        for line in self.measurement_lines:
+            self.ax.lines.remove(line)  # get rid of meas. from last frame
+        for annot in self.measurement_labels:
+            annot.remove()
+        # frames = range(self.measurement_last_frame, frame+1)
+        frames = range(frame, frame+10)  # look ahead
+        self.measurement_last_frame = frame
+        self.measurement_lines = []
+        self.measurement_labels = []
+
+        measurements = []
+        for frame in frames:
+            meas, _ = self.robot.get_meas(frame)
+            measurements += meas
+        x, y, theta = self.robot.get_gt(frame)
+        for idx, r, b in measurements:
+            dest_x = x + r*np.cos(theta + b)
+            dest_y = y + r*np.sin(theta + b)
+            self.measurement_lines += \
+                self.ax.plot([x, dest_x],
+                             [y, dest_y],
+                             color=self.color)
+            self.measurement_labels += \
+                [plt.annotate(int(idx), (dest_x, dest_y), color=self.color)]
 
     def draw(self):
         """
@@ -190,9 +215,10 @@ class RobotVisual:
 
         if self.plot_est_pos:
             self.update_est_pos(frame)
-
         if self.plot_est_landmarks:
             self.update_est_landmarks(frame)
+        if self.plot_measurements:
+            self.update_measurements(frame)
 
 
 class SceneAnimation:
@@ -305,7 +331,7 @@ class SceneAnimation:
         for i in self.landmark_gt.index:
             x, y, name = self.landmark_gt.iloc[i][
                 ["x [m]", "y [m]", "Subject #"]]
-            plt.scatter(x, y, color="black")
+            self.lm_scatter = plt.scatter(x, y, color="black")
             plt.annotate(int(name), (x, y))
 
         self.ax.autoscale_view()
@@ -333,6 +359,10 @@ class SceneAnimation:
         for i in range(len(self.robots)):
             self.anim_robots[i].update(frame)
         self.ax.set_title(f"{self.title}\n{self._create_time_ctr(frame)}")
+        # not sure why this has to keep getting reset..
+        self.ax.set_xlim(*self.xb)
+        self.ax.set_ylim(*self.yb)
+        #self.ax.axis('equal')
 
     def _create_time_ctr(self, frame):
         """
@@ -356,7 +386,14 @@ class SceneAnimation:
            that the script was called in, unless the cwd was changed.
         """
         print(f"writing to {fname}. This can take a while...")
-        writer = PillowWriter(fps=1000/self.interval)
+        if ".gif" in os.path.basename(fname):
+            print("using Pillow GIF writer")
+            writer = PillowWriter(fps=1000/self.interval)
+        elif ".mp4" in os.path.basename(fname):
+            print("using FFmpeg mp4 writer")
+            writer = FFMpegWriter(fps=1000/self.interval)
+        else:
+            raise ValueError("can only write GIF or MP4 files.")
         self.ani.save(fname, writer=writer)
 
     def show(self):
@@ -394,10 +431,18 @@ def get_lims(data, landmark_gt,
 if __name__ == "__main__":
     import file_tools
     import ekf_tools
+    from tqdm import tqdm
     # example usage
     dfs, landmark_gt = file_tools.get_dataset(1)
-    robots = [ekf_tools.Robot(df, fs=50, landmark_gt=landmark_gt) for df in dfs]
-    s = SceneAnimation(robots, landmark_gt, title="dataset 1")
+    robots = [ekf_tools.Robot(df, fs=50, landmark_gt=landmark_gt)
+              for df in dfs]
+    #robots = [ekf_tools.Robot(dfs[0], fs=50, landmark_gt=landmark_gt)]
+    for t in tqdm(range(robots[0].tot_time - 1)):
+        for r in robots:
+            r.next()
+    s = SceneAnimation(robots, landmark_gt, title="Dataset 1, EKF-SLAM (guessing cov)",
+                       plot_est_pos=True, plot_est_landmarks=True,
+                       plot_measurements=True, undersample=1, speedup=1)
     print("\n\ncreated s, an animation object. try either" +
           "\ns.write(\"out.gif\") or \nplt.show()\n\n")
     code.interact(local=locals())

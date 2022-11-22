@@ -37,11 +37,13 @@ class EKFSLAM:
         self.state_hist[0] = [gt_x, gt_y, gt_theta] + \
             [x for num in range(5, 20)
              for x in np.array(self.robot.get_landmark_gt(num+1))]
-        self.cov_hist[0] = np.ones_like(self.cov_hist[0]) * 1000
+        self.cov_hist[0] = np.eye(len(self.state_labels)) * \
+            np.array([0.1 if i+1 >= 6 else 1
+                      for i in range(len(self.state_labels))])
 
     def calc_prop_Gx(self, old_state, t):
         (v, _), _ = self.robot.get_odom(t)  # need v
-        old_theta = old_state[2]
+        #old_theta = old_state[2]
 
         # dx, dy, dtheta in terms of dx, dy, dtheta.
         # see paper, eq (9)
@@ -136,10 +138,12 @@ class EKFSLAM:
 
         est_state, est_cov = self.predict(old_state, old_cov, self.t,
                                           debug=debug)
-        new_state, new_cov = self.correct(est_state, est_cov, self.t,
-                                          debug=debug)
+        new_state, new_cov, n_corrections = self.correct(est_state,
+                                                         est_cov, self.t,
+                                                         debug=debug)
         self.state_hist[self.t] = new_state
         self.cov_hist[self.t] = new_cov
+        return n_corrections
 
     def predict(self, old_state, old_cov, t, debug=False):
         # interestingly, the paper uses the nonlinear propagation
@@ -154,6 +158,10 @@ class EKFSLAM:
 
         state_est[2] = angle_wrap(state_est[2])
 
+        if not np.allclose(old_state[3:], state_est[3:]):
+            # debug why landmarks 6, 7 are getting moved
+            pdb.set_trace()
+
         if debug:
             print(f"{odometry=} \n\n {Gx=} \n\n {Gu=} \n\n {state_est=}")
         return state_est, cov_est
@@ -165,8 +173,10 @@ class EKFSLAM:
         for landmark in meas:
             # run the correction step as many times as there are measurements
             lidx, r, b = landmark
-            if lidx <= 5:
+            # omitting 11 and 17 because these measurements are switched!
+            if lidx <= 5 or lidx == 11 or lidx == 17:
                 continue  # we're not using robot measurements
+            # pdb.set_trace()
             measurement = np.array([r, b])
             Ht = self.calc_meas_jacobian(est_state, lidx)
             meas_prediction = self.calc_meas_prediction(est_state, lidx)
@@ -176,7 +186,7 @@ class EKFSLAM:
             est_cov = (np.identity(len(est_state)) - Kt @ Ht) @ est_cov
             est_state[2] = angle_wrap(est_state[2])
 
-        return est_state, est_cov
+        return est_state, est_cov, len(meas)
 
     def get_est_pos(self, t):
         return self.state_hist[t, 0:3], self.cov_hist[t, 0:3, 0:3]
@@ -219,7 +229,7 @@ class Robot:
            covariance matrix of odometry estimates.
         """
         odom = self.df.iloc[t][["v", "w"]]
-        odom_cov = np.eye(len(odom)) * 0.05  # TODO odometry covariance!
+        odom_cov = np.eye(len(odom)) * 0.4  # TODO odometry covariance!
         return odom, odom_cov
 
     def get_meas(self, t):
@@ -244,7 +254,7 @@ class Robot:
         meas = [(i+1, s[f"r_{i+1}"], s[f"b_{i+1}"])
                 for i in range(20)
                 if not np.isnan(s[f"r_{i+1}"])]
-        meas_cov = np.eye(2) * 0.05  # TODO!!!!!!!
+        meas_cov = np.eye(2) * 0.2  # TODO!!!!!!!
         return meas, meas_cov
 
     def get_gt(self, t):
@@ -275,8 +285,9 @@ class Robot:
 
     def next(self, callback=lambda x: x, debug=False):
         self.t += 1
-        self.state_estimator.iterate(debug=debug)
+        n_corrections = self.state_estimator.iterate(debug=debug)
         callback(self.t)
+        return n_corrections
 
 
 if __name__ == "__main__":
@@ -296,13 +307,14 @@ if __name__ == "__main__":
     scene = visualize.SceneAnimation([r], landmark_gt, title="EKF SLAM",
                                      plot_est_pos=True,
                                      plot_est_landmarks=True,
+                                     plot_measurements=True,
                                      debug=True)
     plt.ion()
     plt.show()
     print("At each time step, press <ENTER> to move to the next," +
           " or <i> then <ENTER> to start an interactive terminal")
     for t in tqdm(range(r.tot_time-1)):
-        r.next(debug=True, callback=scene.update_plot)
+        n = r.next(debug=True, callback=scene.update_plot)
         text_in = input()
         if text_in == "i":
             code.interact(local=locals())
