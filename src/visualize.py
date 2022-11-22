@@ -42,7 +42,9 @@ class RobotVisual:
     """
 
     def __init__(self, ax, robot, name="", color="red",
-                 plot_est_pos=False, plot_est_landmarks=False):
+                 plot_est_pos=False,
+                 plot_est_landmarks=False,
+                 plot_measurements=False):
         """
         Create a robot on an axis.
 
@@ -69,8 +71,10 @@ class RobotVisual:
         self.robot = robot
         self.plot_est_pos = plot_est_pos
         self.plot_est_landmarks = plot_est_landmarks
+        self.plot_measurements = plot_measurements
         self.x, self.y, self.theta = self.robot.get_gt(0)
         self.name = name
+        self.color = color
         self.wheelbase = .235  # m in diameter
 
         self.circle = plt.Circle((self.x, self.y),
@@ -88,23 +92,66 @@ class RobotVisual:
                                       color="black")
 
         if self.plot_est_pos:
-            (x, y, theta), cov = self.robot.get_est_pos(0)
-            cov = cov[:2, :2]  # just x, y
-            self.est_pos = get_cov_ellipse(x, y, cov, color=color, alpha=0.3)
-            self.est_pose = plt.Line2D([x,
-                                        x+self.wheelbase*np.cos(theta)],
-                                       [y,
-                                        y+self.wheelbase*np.sin(self.theta)],
-                                       color="black", alpha=0.3)
+            self.init_est_pose()
 
         if self.plot_est_landmarks:
-            pass
+            self.init_est_landmarks()
+
+        if self.plot_measurements:
+            self.init_measurements()
 
         self.draw()
+
+    def init_est_pose(self):
+        (x, y, theta), cov = self.robot.get_est_pos(0)
+        cov = cov[:2, :2]  # just x, y
+        self.est_pos = get_cov_ellipse(x, y, cov, color=self.color, alpha=0.1)
+        self.est_pose = plt.Line2D([x,
+                                    x+self.wheelbase*np.cos(theta)],
+                                   [y,
+                                    y+self.wheelbase*np.sin(self.theta)],
+                                   color="black", alpha=0.3)
+
+    def update_est_pos(self, frame):
+        (x, y, theta), cov = self.robot.get_est_pos(frame)
+        cov = cov[:2, :2]  # just x, y
+        alpha, major, minor = get_cov_ellipse_params(x, y, cov)
+        self.est_pos.set_center((x, y))
+        self.est_pos.set_angle(alpha)
+        self.est_pos.set_width(major)
+        self.est_pos.set_height(minor)
+        self.est_pose.set_data([x, x+self.wheelbase/2*np.cos(theta)],
+                               [y, y+self.wheelbase/2*np.sin(theta)])
+
+    def init_est_landmarks(self):
+        self.landmarks = np.array(range(5, 20)) + 1
+        names, info = zip(*[(idx, self.robot.get_est_landmark(0, idx))
+                            for idx in self.landmarks])
+        location, cov = zip(*info)  # don't use covariance for now
+        x, y = np.array(location).T
+
+        self.landmark_est = self.ax.scatter(x, y, color=self.color)
+        self.landmark_labels = []
+        for name, xi, yi in zip(names, x, y):
+            self.landmark_labels += [plt.annotate(int(name), (xi, yi),
+                                                  color=self.color)]
+
+    def update_est_landmarks(self, frame):
+        names, info = zip(*[(idx, self.robot.get_est_landmark(0, idx))
+                            for idx in self.landmarks])
+        location, cov = zip(*info)  # don't use covariance for now
+        x, y = np.array(location).T
+        self.landmark_est.set_offsets((x, y))
+        for i, (xi, yi) in enumerate(zip(x, y)):
+            self.landmark_labels[i].set_position((xi, yi))
+
+    def init_measurements(self):
+        self.measurement_lines = []
 
     def draw(self):
         """
         Add the circle and line to the axis.
+        TODO does this really need its own method
 
         Parameters:
         ----------
@@ -142,15 +189,10 @@ class RobotVisual:
         self.label.set_position((x+self.wheelbase/2, y+self.wheelbase/2))
 
         if self.plot_est_pos:
-            (x, y, theta), cov = self.robot.get_est_pos(frame)
-            cov = cov[:2, :2]  # just x, y
-            alpha, major, minor = get_cov_ellipse_params(x, y, cov)
-            self.est_pos.set_center((x, y))
-            self.est_pos.set_angle(alpha)
-            self.est_pos.set_width(major)
-            self.est_pos.set_height(minor)
-            self.est_pose.set_data([x, x+self.wheelbase/2*np.cos(theta)],
-                                   [y, y+self.wheelbase/2*np.sin(theta)])
+            self.update_est_pos(frame)
+
+        if self.plot_est_landmarks:
+            self.update_est_landmarks(frame)
 
 
 class SceneAnimation:
@@ -167,6 +209,7 @@ class SceneAnimation:
     def __init__(self, robots, landmark_gt, title="",
                  speedup=20, fs=50, undersample=100,
                  plot_est_pos=False, plot_est_landmarks=False,
+                 plot_measurements=False,
                  figsize=(5, 8), debug=False,
                  keys=["gt_x", "gt_y", "gt_theta"]):
         """
@@ -212,6 +255,7 @@ class SceneAnimation:
         self.figsize = figsize
         self.plot_est_pos = plot_est_pos
         self.plot_est_landmarks = plot_est_landmarks
+        self.plot_measurements = plot_measurements
 
         self.xb, self.yb = get_lims(self.dfs, landmark_gt)
         self.fig, self.ax = plt.subplots(figsize=self.figsize)
@@ -223,8 +267,6 @@ class SceneAnimation:
         if debug:
             # don't do an animation. step through frame by frame.
             self.start_plot()
-        #     self.event_loop = threading.Thread(target=self.debug_event_loop)
-        #     self.event_loop.start()
         else:
             self.ani = FuncAnimation(fig=self.fig,
                                      frames=self.frames,
@@ -256,7 +298,8 @@ class SceneAnimation:
             r = RobotVisual(self.ax, self.robots[i],
                             name=f"{i+1}", color=colors[i],
                             plot_est_pos=self.plot_est_pos,
-                            plot_est_landmarks=self.plot_est_landmarks)
+                            plot_est_landmarks=self.plot_est_landmarks,
+                            plot_measurements=self.plot_measurements)
             self.anim_robots += [r]
 
         for i in self.landmark_gt.index:
@@ -320,54 +363,6 @@ class SceneAnimation:
         plt.show()
 
 
-#def plot_one_step(series, landmark_gt=None,
-#                  ax=None, x_bounds=None, y_bounds=None, axiseq=True,
-#                  fname=None, keys=["gt_x", "gt_y", "gt_theta"]):
-#    """
-#    Create a matplotlib plot describing a single time frame.
-#    Plots landmark and robot positions using the ground-truth
-#    dataframes.
-#
-#    Parameters:
-#    ----------
-#    series: list of dataframes or dataframe
-#       describing the current time frame.
-#    """
-#    if not isinstance(series, list):
-#        series = [series]
-#    if not isinstance(series[0], pd.Series):
-#        raise ValueError("series needs to be a Series" +
-#                         " or list of Series!")
-#    if ax is None:
-#        _, ax = plt.subplots()
-#
-#    robots = []
-#    for i in range(len(series)):
-#        x, y, theta = series[i][keys]
-#        # print(f"{x=} {y=} {theta=}")
-#        robots += [RobotVisual(ax, x, y, theta,
-#                               name=f"{i+1}", color=colors[i])]
-#
-#    if landmark_gt is not None:
-#        for i in landmark_gt.index:
-#            x, y, name = landmark_gt.iloc[i][["x [m]", "y [m]", "Subject #"]]
-#            plt.scatter(x, y, color="black")
-#            plt.annotate(name, (x, y))
-#
-#    # figure out x limits:
-#    ax.autoscale_view()
-#    if x_bounds is not None:
-#        ax.set_xlim(*x_bounds)
-#    if y_bounds is not None:
-#        ax.set_ylim(*y_bounds)
-#    if axiseq:
-#        ax.axis('equal')
-#    if fname is not None:
-#        plt.savefig(fname)
-#
-#    return ax, robots
-
-
 def get_lims(data, landmark_gt,
              robot_keys=["gt_x", "gt_y", "gt_theta"]):
     """
@@ -401,7 +396,7 @@ if __name__ == "__main__":
     import ekf_tools
     # example usage
     dfs, landmark_gt = file_tools.get_dataset(1)
-    robots = [ekf_tools.Robot(df, fs=50) for df in dfs]
+    robots = [ekf_tools.Robot(df, fs=50, landmark_gt=landmark_gt) for df in dfs]
     s = SceneAnimation(robots, landmark_gt, title="dataset 1")
     print("\n\ncreated s, an animation object. try either" +
           "\ns.write(\"out.gif\") or \nplt.show()\n\n")

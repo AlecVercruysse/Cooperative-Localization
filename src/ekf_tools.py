@@ -46,8 +46,8 @@ class EKFSLAM:
         # dx, dy, dtheta in terms of dx, dy, dtheta.
         # see paper, eq (9)
         robot_Gx = np.array([
-            [1, 0, -v*np.sin(old_theta)*self.robot.dt],
-            [0, 1,  v*np.sin(old_theta)*self.robot.dt],
+            [1, 0, 0], #-v*np.sin(old_theta)*self.robot.dt],
+            [0, 1, 0], # v*np.sin(old_theta)*self.robot.dt],
             [0, 0, 1]
         ])
 
@@ -130,18 +130,18 @@ class EKFSLAM:
         """
         move forward a single time step
         (perform a prediction and correction step).
-
-        TODO print things if debug flag is set.
         """
         old_state, old_cov = self.state_hist[self.t], self.cov_hist[self.t]
         self.t += 1
 
-        est_state, est_cov = self.predict(old_state, old_cov, self.t)
-        new_state, new_cov = self.correct(est_state, est_cov, self.t)
+        est_state, est_cov = self.predict(old_state, old_cov, self.t,
+                                          debug=debug)
+        new_state, new_cov = self.correct(est_state, est_cov, self.t,
+                                          debug=debug)
         self.state_hist[self.t] = new_state
         self.cov_hist[self.t] = new_cov
 
-    def predict(self, old_state, old_cov, t):
+    def predict(self, old_state, old_cov, t, debug=False):
         # interestingly, the paper uses the nonlinear propagation
         # function for the state, and only uses the linearization
         # to propagate the uncertainty. TODO discuss with Prof. Shia
@@ -153,9 +153,12 @@ class EKFSLAM:
         cov_est = (Gx @ old_cov @ Gx.T) + (Gu @ odometry_cov @ Gu.T)
 
         state_est[2] = angle_wrap(state_est[2])
+
+        if debug:
+            print(f"{odometry=} \n\n {Gx=} \n\n {Gu=} \n\n {state_est=}")
         return state_est, cov_est
 
-    def correct(self, est_state, est_cov, t):
+    def correct(self, est_state, est_cov, t, debug=False):
         # call a function in robot clas to get measurements?
         # the data belongs to the robot.
         meas, meas_cov = self.robot.get_meas(t)
@@ -177,6 +180,14 @@ class EKFSLAM:
 
     def get_est_pos(self, t):
         return self.state_hist[t, 0:3], self.cov_hist[t, 0:3, 0:3]
+
+    def get_est_landmark(self, t, idx):
+        lx_idx = self.state_labels.index(f"x_{idx}")
+        ly_idx = self.state_labels.index(f"y_{idx}")
+        state = self.state_hist[t][[lx_idx, ly_idx]]
+        cov = self.cov_hist[t][np.ix_([lx_idx, ly_idx],
+                                      [lx_idx, ly_idx])]
+        return state, cov
 
 
 class Robot:
@@ -256,6 +267,12 @@ class Robot:
         """
         return self.state_estimator.get_est_pos(t)
 
+    def get_est_landmark(self, t, idx):
+        """
+        Get estimated landmark information at time t.
+        """
+        return self.state_estimator.get_est_landmark(t, idx)
+
     def next(self, callback=lambda x: x, debug=False):
         self.t += 1
         self.state_estimator.iterate(debug=debug)
@@ -266,15 +283,35 @@ if __name__ == "__main__":
     import file_tools
     import visualize
     import matplotlib.pyplot as plt
+    import sys
+
+    # weird issue with non responsive plots when using the default
+    # mac backend... this is not an issue on linux.
+    if sys.platform == "darwin":
+        import matplotlib
+        matplotlib.use("TkAgg")
+
     dfs, landmark_gt = file_tools.get_dataset(1)
     r = Robot(dfs[0], fs=50, landmark_gt=landmark_gt)
     scene = visualize.SceneAnimation([r], landmark_gt, title="EKF SLAM",
-                                     plot_est_pos=True, debug=True)
+                                     plot_est_pos=True,
+                                     plot_est_landmarks=True,
+                                     debug=True)
     plt.ion()
     plt.show()
     print("At each time step, press <ENTER> to move to the next," +
           " or <i> then <ENTER> to start an interactive terminal")
     for t in tqdm(range(r.tot_time-1)):
         r.next(debug=True, callback=scene.update_plot)
-        if input() == "i":
+        text_in = input()
+        if text_in == "i":
             code.interact(local=locals())
+        elif len(text_in) != 0:
+            try:
+                n = int(text_in)
+                print(f"moving forward by {n} steps...")
+                for i in range(n):
+                    t += 1
+                    r.next(debug=True, callback=scene.update_plot)
+            except:
+                pass
