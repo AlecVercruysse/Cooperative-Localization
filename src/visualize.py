@@ -77,7 +77,8 @@ class RobotVisual:
         self.circle = plt.Circle((self.x, self.y),
                                  radius=self.wheelbase/2,
                                  facecolor=color,
-                                 edgecolor="black")
+                                 edgecolor="black",
+                                 label=f"Robot {self.name}")
         self.line = plt.Line2D([self.x,
                                 self.x+self.wheelbase/2*np.cos(self.theta)],
                                [self.y,
@@ -148,6 +149,8 @@ class RobotVisual:
         self.measurement_last_frame = 0
 
     def update_measurements(self, frame):
+        if frame == self.measurement_last_frame:
+            return  # we're at the end, don't update
         for line in self.measurement_lines:
             self.ax.lines.remove(line)  # get rid of meas. from last frame
         for annot in self.measurement_labels:
@@ -160,9 +163,10 @@ class RobotVisual:
 
         measurements = []
         for frame in frames:
-            meas, _ = self.robot.get_meas(frame)
-            measurements += meas
-        x, y, theta = self.robot.get_gt(frame)
+            if frame < self.robot.tot_time:
+                meas, _ = self.robot.get_meas(frame)
+                measurements += meas
+        x, y, theta = self.robot.get_gt(frames[0])
         for idx, r, b in measurements:
             dest_x = x + r*np.cos(theta + b)
             dest_y = y + r*np.sin(theta + b)
@@ -334,6 +338,10 @@ class SceneAnimation:
             self.lm_scatter = plt.scatter(x, y, color="black")
             plt.annotate(int(name), (x, y))
 
+        self.ax.set_xlabel("x [m]")
+        self.ax.set_ylabel("y [m]")
+        self.ax.legend()
+
         self.ax.autoscale_view()
         self.ax.set_xlim(*self.xb)
         self.ax.set_ylim(*self.yb)
@@ -432,17 +440,19 @@ if __name__ == "__main__":
     import file_tools
     import ekf_tools
     from tqdm import tqdm
+    fs=10
     # example usage
-    dfs, landmark_gt = file_tools.get_dataset(1)
-    robots = [ekf_tools.Robot(df, fs=50, landmark_gt=landmark_gt)
-              for df in dfs]
-    #robots = [ekf_tools.Robot(dfs[0], fs=50, landmark_gt=landmark_gt)]
+    dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
+    #robots = [ekf_tools.Robot(df, fs=50, landmark_gt=landmark_gt)
+    #          for df in dfs]
+    robots = [ekf_tools.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)]
     for t in tqdm(range(robots[0].tot_time - 1)):
         for r in robots:
             r.next()
     s = SceneAnimation(robots, landmark_gt, title="Dataset 1, EKF-SLAM (guessing cov)",
                        plot_est_pos=True, plot_est_landmarks=True,
-                       plot_measurements=True, undersample=1, speedup=1)
+                       plot_measurements=True,
+                       undersample=20, speedup=20, fs=10)
     print("\n\ncreated s, an animation object. try either" +
           "\ns.write(\"out.gif\") or \nplt.show()\n\n")
     code.interact(local=locals())

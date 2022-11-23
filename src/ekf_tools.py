@@ -27,29 +27,39 @@ class EKFSLAM:
                                   len(self.state_labels),
                                   len(self.state_labels)))
 
-        # initialize with very large std. devs:
-        # (all initial estimates are random so that the measurement
-        # model does not return a Ht jacobian that divides by zero).
-        # self.state_hist[0] = np.random.random(size=self.state_hist[0].shape)
-        print("warning: using gt for initialization")
-        # pdb.set_trace()
-        gt_x, gt_y, gt_theta = self.robot.get_gt(0)
-        self.state_hist[0] = [gt_x, gt_y, gt_theta] + \
-            [x for num in range(5, 20)
-             for x in np.array(self.robot.get_landmark_gt(num+1))]
-        self.cov_hist[0] = np.eye(len(self.state_labels)) * \
-            np.array([0.1 if i+1 >= 6 else 1
-                      for i in range(len(self.state_labels))])
+        # initialize:
+        gt = False  # parameter
+
+        # use one-indexed landmark idx (a couple indeces are unused).
+        self.landmark_seen = [False for _ in range(20 + 1)]
+
+        if gt:
+            print("warning: using gt for initialization")
+            # pdb.set_trace()
+            gt_x, gt_y, gt_theta = self.robot.get_gt(0)
+            self.state_hist[0] = [gt_x, gt_y, gt_theta] + \
+                [x for num in range(5, 20)
+                 for x in np.array(self.robot.get_landmark_gt(num+1))]
+            self.cov_hist[0] = np.eye(len(self.state_labels)) * \
+                np.array([0.1 if i+1 >= 6 else 1
+                          for i in range(len(self.state_labels))])
+        else:
+            print("using realistic landmark initialization")
+            gt_x, gt_y, gt_theta = self.robot.get_gt(0)
+            self.state_hist[0][:3] = (gt_x, gt_y, gt_theta)
+            self.cov_hist[0] = np.eye(len(self.state_labels)) * \
+                np.array([1 if i+1 >= 6 else .1
+                          for i in range(len(self.state_labels))])
 
     def calc_prop_Gx(self, old_state, t):
         (v, _), _ = self.robot.get_odom(t)  # need v
-        #old_theta = old_state[2]
+        # old_theta = old_state[2]
 
         # dx, dy, dtheta in terms of dx, dy, dtheta.
         # see paper, eq (9)
         robot_Gx = np.array([
-            [1, 0, 0], #-v*np.sin(old_theta)*self.robot.dt],
-            [0, 1, 0], # v*np.sin(old_theta)*self.robot.dt],
+            [1, 0, 0],  # -v*np.sin(old_theta)*self.robot.dt],
+            [0, 1, 0],  # v*np.sin(old_theta)*self.robot.dt],
             [0, 0, 1]
         ])
 
@@ -145,15 +155,30 @@ class EKFSLAM:
         self.cov_hist[self.t] = new_cov
         return n_corrections
 
+    def g(self, old_state, odometry):
+        """
+        The nonlinear state propagation function.
+        """
+        #pdb.set_trace()
+        est_state = np.copy(old_state)
+        x, y, theta = old_state[:3]
+        est_state[:3] = old_state[:3] + \
+            np.array([
+                [np.cos(theta) * self.robot.dt, 0],
+                [np.sin(theta) * self.robot.dt, 0],
+                [0, self.robot.dt],
+            ]) @ odometry
+        return est_state
+
     def predict(self, old_state, old_cov, t, debug=False):
-        # interestingly, the paper uses the nonlinear propagation
-        # function for the state, and only uses the linearization
-        # to propagate the uncertainty. TODO discuss with Prof. Shia
+        """
+        Prediction step.
+        """
         Gx = self.calc_prop_Gx(old_state, t)  # the jacobian w.r.t. state
         Gu = self.calc_prop_Gu(old_state, t)  # the jacobian w.r.t. odom
         odometry, odometry_cov = self.robot.get_odom(t)
 
-        state_est = Gx @ old_state + Gu @ odometry
+        state_est = self.g(old_state, odometry)
         cov_est = (Gx @ old_cov @ Gx.T) + (Gu @ odometry_cov @ Gu.T)
 
         state_est[2] = angle_wrap(state_est[2])
@@ -167,8 +192,14 @@ class EKFSLAM:
         return state_est, cov_est
 
     def correct(self, est_state, est_cov, t, debug=False):
-        # call a function in robot clas to get measurements?
-        # the data belongs to the robot.
+        """
+        Correction step. Note that this might perform zero corrections,
+        and might perform many. It depends on how many measurements
+        we get in that time step.
+
+        The first time we see a landmark, we initialize that landmark.
+        So we do not perform a correction step with it.
+        """
         meas, meas_cov = self.robot.get_meas(t)
         for landmark in meas:
             # run the correction step as many times as there are measurements
@@ -176,6 +207,18 @@ class EKFSLAM:
             # omitting 11 and 17 because these measurements are switched!
             if lidx <= 5 or lidx == 11 or lidx == 17:
                 continue  # we're not using robot measurements
+
+
+            if not self.landmark_seen[lidx]:
+                # perform first-time initialization:
+                lx_idx = self.state_labels.index(f"x_{lidx}")
+                ly_idx = self.state_labels.index(f"y_{lidx}")
+                x, y, theta = est_state[:3]
+                est_state[lx_idx] = x + r * np.cos(theta + b)
+                est_state[ly_idx] = y + r * np.sin(theta + b)
+                self.landmark_seen[lidx] = True
+                return est_state, est_cov, 0
+
             # pdb.set_trace()
             measurement = np.array([r, b])
             Ht = self.calc_meas_jacobian(est_state, lidx)
