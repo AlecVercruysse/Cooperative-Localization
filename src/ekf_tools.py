@@ -12,9 +12,15 @@ def angle_wrap(angle):
 class EKFSLAM:
     # keep a whole separate state estimation class
     # so that this can be easily replaced
-    def __init__(self, robot):
+    def __init__(self, robot, gt=False):
         """
-        initialize, keep track of state and covariance for all time steps
+        initialize, keep track of state and covariance for all time steps.
+
+        gt is a boolean that defines whether the robot is initialized with
+        ground truth data. If not, the robot initializes itself at ground truth
+        (so that the estimator has the global coordinate reference frame) but
+        all landmarks are initialized with their measured value, the first time
+        they are observed. 
         """
         self.robot = robot
         self.t = 0
@@ -26,9 +32,6 @@ class EKFSLAM:
         self.cov_hist = np.zeros((self.robot.tot_time,
                                   len(self.state_labels),
                                   len(self.state_labels)))
-
-        # initialize:
-        gt = False  # parameter
 
         # use one-indexed landmark idx (a couple indeces are unused).
         self.landmark_seen = [False for _ in range(20 + 1)]
@@ -52,6 +55,11 @@ class EKFSLAM:
                           for i in range(len(self.state_labels))])
 
     def calc_prop_Gx(self, old_state, t):
+        """
+        Calculate the linearization of the the propagation function
+        with respect to the previous state. This is used in calculating
+        the covariance of the propagated state in the prediction step.
+        """
         (v, _), _ = self.robot.get_odom(t)  # need v
         # old_theta = old_state[2]
 
@@ -69,6 +77,11 @@ class EKFSLAM:
         return Gx
 
     def calc_prop_Gu(self, old_state, t):
+        """
+        Calculate the linearization of the the propagation function
+        with respect to the control input. This is used in calculating
+        the covariance of the propagated state in the prediction step.
+        """
         old_theta = old_state[2]
 
         Gu = np.zeros((len(self.state_labels), 2))
@@ -90,7 +103,9 @@ class EKFSLAM:
         into a range, bearing measurement.
         Ht linearizes that model, found in eq. (11).
 
-        TODO document parameters
+        est_state: a vector describing the current state estimate
+        landmark_idx: an integer describing the index of the landmark,
+                      as described in the dataset.
         """
         x, y, theta, = est_state[[0, 1, 2]]
         lx_idx = self.state_labels.index(f"x_{landmark_idx}")
@@ -130,6 +145,11 @@ class EKFSLAM:
         return Ht
 
     def calc_meas_prediction(self, est_state, landmark_idx):
+        """
+        calculate the predicted (range, bearing) of a measurement
+        given an estimated state and the index of the landmark
+        being measured.
+        """
         x, y, theta, = est_state[[0, 1, 2]]
         lx_idx = self.state_labels.index(f"x_{landmark_idx}")
         ly_idx = self.state_labels.index(f"y_{landmark_idx}")
@@ -232,9 +252,18 @@ class EKFSLAM:
         return est_state, est_cov, len(meas)
 
     def get_est_pos(self, t):
+        """
+        return a tuple of predicted ([x, y, heading], covariance)
+        for the robot at time step t.
+        """
         return self.state_hist[t, 0:3], self.cov_hist[t, 0:3, 0:3]
 
     def get_est_landmark(self, t, idx):
+        """
+        return a tuple of predicted ([landmark x, landmark y], covariance)
+        for the landmark `idx`'s position as estimated by the robot at time
+        step t.
+        """
         lx_idx = self.state_labels.index(f"x_{idx}")
         ly_idx = self.state_labels.index(f"y_{idx}")
         state = self.state_hist[t][[lx_idx, ly_idx]]
@@ -327,6 +356,16 @@ class Robot:
         return self.state_estimator.get_est_landmark(t, idx)
 
     def next(self, callback=lambda x: x, debug=False):
+        """
+        perform an interation.
+
+        `callback` is an optional function that is called on
+        completion of the iteration. It must take the current
+        time step (after the iteration) as an argument.
+
+        The `debug` flag is passed to the state estimator
+        and controls some debug printing on stdout.
+        """
         self.t += 1
         n_corrections = self.state_estimator.iterate(debug=debug)
         callback(self.t)
@@ -334,6 +373,15 @@ class Robot:
 
 
 if __name__ == "__main__":
+    # run an interactive version of this state estimation.
+    # press <enter> in the repl to advance to the next time step.
+    #
+    # type a number and press enter in the repl to advance that
+    # amount of time steps.
+    #
+    # type the `i` character then enter in the repl to enter
+    # interactive mode (to e.g. call pdb.set_trace(), exit
+    # interactive mode, then step through a function).
     import file_tools
     import visualize
     import matplotlib.pyplot as plt
