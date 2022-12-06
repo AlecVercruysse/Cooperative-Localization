@@ -23,7 +23,7 @@ def angle_wrap(angle):
 fs = 10
 dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
 #r = Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)
-robots = [robot.Robot(df, fs=50, landmark_gt=landmark_gt) for df in dfs]
+robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt) for df in dfs]
 
 all_robots_errors = []
 

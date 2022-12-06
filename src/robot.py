@@ -98,7 +98,7 @@ class Robot:
         """
         return self.state_estimator.get_est_landmark(t, idx)
 
-    def next(self, callback=lambda x: x, debug=False):
+    def next(self, callback=lambda x: x, debug=False, correct=True):
         """
         perform an interation.
 
@@ -110,6 +110,6 @@ class Robot:
         and controls some debug printing on stdout.
         """
         self.t += 1
-        n_corrections = self.state_estimator.iterate(debug=debug)
+        n_corrections = self.state_estimator.iterate(debug=debug,correct=correct)
         callback(self.t)
         return n_corrections
