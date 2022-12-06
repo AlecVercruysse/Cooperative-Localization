@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
@@ -242,6 +243,7 @@ class SceneAnimation:
 
     def __init__(self, robots, landmark_gt, title="",
                  speedup=20, fs=50, undersample=100,
+                 run_time=None,
                  plot_est_pos=False, plot_est_landmarks=False,
                  plot_measurements=False,
                  only_robot_measurements=False,
@@ -298,7 +300,11 @@ class SceneAnimation:
         self.interval = int(1000*undersample/fs/speedup)
         pause_time = 3  # seconds
         pause_frames = int(pause_time / (1000*undersample/fs/speedup))
-        self.frames = range(0, self.length + pause_frames, undersample)
+
+        if run_time is None:
+            self.frames = range(0, self.length + pause_frames, undersample)
+        else:
+            self.frames = range(0, int(run_time*fs), undersample)
 
         if debug:
             # don't do an animation. step through frame by frame.
@@ -347,7 +353,7 @@ class SceneAnimation:
 
         self.ax.set_xlabel("x [m]")
         self.ax.set_ylabel("y [m]")
-        self.ax.legend()
+        self.ax.legend(loc="upper left")
 
         self.ax.autoscale_view()
         self.ax.set_xlim(*self.xb)
@@ -400,7 +406,7 @@ class SceneAnimation:
            File name to write to. This is relative to the directory
            that the script was called in, unless the cwd was changed.
         """
-        print(f"writing to {fname}. This can take a while...")
+        print(f"writing to {fname}. This can take a while (even after the progress bar finishes)...")
         if ".gif" in os.path.basename(fname):
             print("using Pillow GIF writer")
             writer = PillowWriter(fps=1000/self.interval)
@@ -409,7 +415,8 @@ class SceneAnimation:
             writer = FFMpegWriter(fps=1000/self.interval)
         else:
             raise ValueError("can only write GIF or MP4 files.")
-        self.ani.save(fname, writer=writer)
+        with ProgressBar() as t:
+            self.ani.save(fname, writer=writer, progress_callback=t.update_to)
 
     def show(self):
         plt.show()
@@ -441,3 +448,8 @@ def get_lims(data, landmark_gt,
     r = .235 / 2  # wheelbase / 2
 
     return (min_x - r/2, max_x + r/2), (min_y - r/2, max_y + r/2)
+
+class ProgressBar(tqdm):
+    def update_to(self, current, total):
+        self.total = total
+        self.update(current - self.n)

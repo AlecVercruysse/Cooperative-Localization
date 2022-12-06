@@ -29,12 +29,12 @@ if sys.platform == "darwin":
 fs = 10
 dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
 #r = Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)
-robots = [robot.Robot(df, fs=50, landmark_gt=landmark_gt) for df in dfs]
+robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt, gt_initialization=True) for df in dfs]
 scene = visualize.SceneAnimation(robots, landmark_gt, title="EKF SLAM",
                                  plot_est_pos=True,
                                  plot_est_landmarks=True,
                                  plot_measurements=True,
-                                 debug=True)
+                                 debug=True, fs=fs)
 plt.ion()
 plt.show()
 print("At each time step, press <ENTER> to move to the next," +

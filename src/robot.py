@@ -8,7 +8,7 @@ from ekf import EKFSLAM
 
 class Robot:
 
-    def __init__(self, df, fs, landmark_gt=None, other_robots=[], my_idx=None):
+    def __init__(self, df, fs, landmark_gt=None, other_robots=[], my_idx=None, gt_initialization=False):
         """
         Other_robots is a list of other robot objects. This list contains
         the other robots that this robot will query to see if they have measurement
@@ -22,7 +22,8 @@ class Robot:
         self.t = 0  # keep track of time index
         self.landmark_gt = landmark_gt
         self.state_estimator = EKFSLAM(
-            robot=self
+            robot=self,
+            gt=gt_initialization
         )
         self.other_robots = other_robots
         self.my_idx = my_idx

@@ -34,12 +34,13 @@ class EKFSLAM:
         if gt:
             print("warning: using gt for initialization")
             # pdb.set_trace()
+            self.landmark_seen = [True for _ in range(20 + 1)]
             gt_x, gt_y, gt_theta = self.robot.get_gt(0)
             self.state_hist[0] = [gt_x, gt_y, gt_theta] + \
                 [x for num in range(5, 20)
                  for x in np.array(self.robot.get_landmark_gt(num+1))]
             self.cov_hist[0] = np.eye(len(self.state_labels)) * \
-                np.array([0.1 if i+1 >= 6 else 1
+                np.array([0.01 if i+1 >= 6 else 1
                           for i in range(len(self.state_labels))])
         else:
             print("using realistic landmark initialization")
