@@ -247,7 +247,7 @@ class SceneAnimation:
 
         Parameters:
         ----------
-        dfs: list of ekf_tools.Robot objects
+        dfs: list of robot.Robot objects
            An object for each robot to plot.
         landmark_gt: pandas.DataFrame
            A dataframe containing landmark ground truth information, generated
@@ -438,14 +438,14 @@ def get_lims(data, landmark_gt,
 
 if __name__ == "__main__":
     import file_tools
-    import ekf_tools
+    import robot
     from tqdm import tqdm
     fs=10
     # example usage
     dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
-    #robots = [ekf_tools.Robot(df, fs=50, landmark_gt=landmark_gt)
+    #robots = [robot.Robot(df, fs=50, landmark_gt=landmark_gt)
     #          for df in dfs]
-    robots = [ekf_tools.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)]
+    robots = [robot.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)]
     for t in tqdm(range(robots[0].tot_time - 1)):
         for r in robots:
             r.next()
