@@ -43,6 +43,7 @@ scene = visualize.SceneAnimation(robots, landmark_gt, title="EKF SLAM",
                                  plot_est_pos=True,
                                  plot_est_landmarks=True,
                                  plot_measurements=True,
+                                 only_robot_measurements=True,
                                  debug=True, fs=fs)
 plt.ion()
 plt.show()

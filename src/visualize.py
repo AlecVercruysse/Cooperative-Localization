@@ -41,7 +41,8 @@ class RobotVisual:
     def __init__(self, ax, robot, name="", color="red",
                  plot_est_pos=False,
                  plot_est_landmarks=False,
-                 plot_measurements=False):
+                 plot_measurements=False,
+                 only_robot_measurements=False):
         """
         Create a robot on an axis.
 
@@ -69,6 +70,7 @@ class RobotVisual:
         self.plot_est_pos = plot_est_pos
         self.plot_est_landmarks = plot_est_landmarks
         self.plot_measurements = plot_measurements
+        self.only_robot_measurements = only_robot_measurements
         self.x, self.y, self.theta = self.robot.get_gt(0)
         self.name = name
         self.color = color
@@ -168,6 +170,8 @@ class RobotVisual:
                 measurements += meas
         x, y, theta = self.robot.get_gt(frames[0])
         for idx, r, b in measurements:
+            if self.only_robot_measurements and idx > 5:
+                continue
             dest_x = x + r*np.cos(theta + b)
             dest_y = y + r*np.sin(theta + b)
             self.measurement_lines += \
@@ -240,6 +244,7 @@ class SceneAnimation:
                  speedup=20, fs=50, undersample=100,
                  plot_est_pos=False, plot_est_landmarks=False,
                  plot_measurements=False,
+                 only_robot_measurements=False,
                  figsize=(5, 8), debug=False,
                  keys=["gt_x", "gt_y", "gt_theta"]):
         """
@@ -286,6 +291,7 @@ class SceneAnimation:
         self.plot_est_pos = plot_est_pos
         self.plot_est_landmarks = plot_est_landmarks
         self.plot_measurements = plot_measurements
+        self.only_robot_measurements = only_robot_measurements
 
         self.xb, self.yb = get_lims(self.dfs, landmark_gt)
         self.fig, self.ax = plt.subplots(figsize=self.figsize)
@@ -329,7 +335,8 @@ class SceneAnimation:
                             name=f"{i+1}", color=colors[i],
                             plot_est_pos=self.plot_est_pos,
                             plot_est_landmarks=self.plot_est_landmarks,
-                            plot_measurements=self.plot_measurements)
+                            plot_measurements=self.plot_measurements,
+                            only_robot_measurements=self.only_robot_measurements)
             self.anim_robots += [r]
 
         for i in self.landmark_gt.index:

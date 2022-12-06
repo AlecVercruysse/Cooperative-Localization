@@ -252,14 +252,15 @@ class EKFSLAM:
                     self.correct_with_other_robot(est_state, est_cov,
                                                   other_pos_est, other_pos_cov,
                                                   r, b, other_meas_cov,
-                                                  cov_itsc=cov_itsc)
+                                                  cov_itsc=cov_itsc,
+                                                  debug=debug)
                     n_corrections += 1
 
         return est_state, est_cov, n_corrections
 
     def correct_with_other_robot(self, est_state, est_cov, other_pos_est,
                                  other_pos_cov, r, b, other_meas_cov,
-                                 cov_itsc=True):
+                                 cov_itsc=True, debug=False):
         """
         do the math in section 3.5 of the paper, with minor modifications
         """
@@ -304,31 +305,25 @@ class EKFSLAM:
 
         if cov_itsc:
             traces = []  # brute force optimize omega
-            omegas = np.linspace(0, 1)
+
+            # limit to .5, don't let it use the new measurement too much
+            omegas = np.linspace(0.5, 1)
             for omega in omegas:
                 # fused covariance
-                try:
-                    P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
-                                        (1 - omega) * np.linalg.inv(P_ji))
-                except:
-                    pdb.set_trace()
+                P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
+                                    (1 - omega) * np.linalg.inv(P_ji))
                 traces += [np.trace(P_j)]
             best_trace_idx = np.argmin(traces)
             omega = omegas[best_trace_idx]
-            try:
-                P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
-                                    (1 - omega) * np.linalg.inv(P_ji))
-            except:
-                pdb.set_trace()
+            P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
+                                (1 - omega) * np.linalg.inv(P_ji))
             # pdb.set_trace()
             if omega == 1:
                 pass
-            #     print("Warning! Covariance Intersection" +
-            #           f"is increasing covariance ({omega=})")
-            #     print(f"{P_ji=}, {est_cov[0:3,0:3]=}")
             else:
-                print(f"covariance intersection worked! ({omega=})")
-                # pdb.set_trace()
+                if debug:
+                    print("covariance intersection worked on robot" +
+                          f" {self.robot.my_idx}! ({omega=})")
 
             # fused position estimate.
             x_bar_j = P_j @ ((
