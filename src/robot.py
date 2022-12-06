@@ -8,7 +8,14 @@ from ekf import EKFSLAM
 
 class Robot:
 
-    def __init__(self, df, fs, landmark_gt=None):
+    def __init__(self, df, fs, landmark_gt=None, other_robots=[], my_idx=None):
+        """
+        Other_robots is a list of other robot objects. This list contains
+        the other robots that this robot will query to see if they have measurement
+        data.
+
+        my_idx only matters if other_robots is not empty.
+        """
         self.df = df
         self.tot_time = len(df)
         self.dt = 1/fs
@@ -17,6 +24,8 @@ class Robot:
         self.state_estimator = EKFSLAM(
             robot=self
         )
+        self.other_robots = other_robots
+        self.my_idx = my_idx
 
     def get_odom(self, t):
         """
@@ -104,52 +113,3 @@ class Robot:
         n_corrections = self.state_estimator.iterate(debug=debug)
         callback(self.t)
         return n_corrections
-
-
-if __name__ == "__main__":
-    # run an interactive version of this state estimation.
-    # press <enter> in the repl to advance to the next time step.
-    #
-    # type a number and press enter in the repl to advance that
-    # amount of time steps.
-    #
-    # type the `i` character then enter in the repl to enter
-    # interactive mode (to e.g. call pdb.set_trace(), exit
-    # interactive mode, then step through a function).
-    import file_tools
-    import visualize
-    import matplotlib.pyplot as plt
-    import sys
-
-    # weird issue with non responsive plots when using the default
-    # mac backend... this is not an issue on linux.
-    if sys.platform == "darwin":
-        import matplotlib
-        matplotlib.use("TkAgg")
-
-    fs = 10
-    dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
-    r = Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)
-    scene = visualize.SceneAnimation([r], landmark_gt, title="EKF SLAM",
-                                     plot_est_pos=True,
-                                     plot_est_landmarks=True,
-                                     plot_measurements=True,
-                                     debug=True)
-    plt.ion()
-    plt.show()
-    print("At each time step, press <ENTER> to move to the next," +
-          " or <i> then <ENTER> to start an interactive terminal")
-    for t in tqdm(range(r.tot_time-1)):
-        n = r.next(debug=True, callback=scene.update_plot)
-        text_in = input()
-        if text_in == "i":
-            code.interact(local=locals())
-        elif len(text_in) != 0:
-            try:
-                n = int(text_in)
-                print(f"moving forward by {n} steps...")
-                for i in range(n):
-                    t += 1
-                    r.next(debug=True, callback=scene.update_plot)
-            except:
-                pass

@@ -1,14 +1,13 @@
 import numpy as np
-from tqdm import tqdm
+# from tqdm import tqdm
 
 import pdb
-import code
 
 
 class EKFSLAM:
     # keep a whole separate state estimation class
     # so that this can be easily replaced
-    def __init__(self, robot, gt=False):
+    def __init__(self, robot, gt=False, omega=0.1):
         """
         initialize, keep track of state and covariance for all time steps.
 
@@ -16,9 +15,13 @@ class EKFSLAM:
         ground truth data. If not, the robot initializes itself at ground truth
         (so that the estimator has the global coordinate reference frame) but
         all landmarks are initialized with their measured value, the first time
-        they are observed. 
+        they are observed.
+
+        omega is only used in the case of covariance intersection. It is between
+        0 and 1.
         """
         self.robot = robot
+        self.omega = omega
         self.t = 0
         self.state_labels = ["x", "y", "theta"] + \
             [f"{meas}_{num+1}" for num in range(5, 20) for meas in ["x", "y"]]
@@ -175,7 +178,7 @@ class EKFSLAM:
         """
         The nonlinear state propagation function.
         """
-        #pdb.set_trace()
+        # pdb.set_trace()
         est_state = np.copy(old_state)
         x, y, theta = old_state[:3]
         est_state[:3] = old_state[:3] + \
@@ -203,7 +206,8 @@ class EKFSLAM:
             print(f"{odometry=} \n\n {Gx=} \n\n {Gu=} \n\n {state_est=}")
         return state_est, cov_est
 
-    def correct(self, est_state, est_cov, t, debug=False):
+    def correct(self, est_state, est_cov, t,
+                debug=False, cov_itsc=False):
         """
         Correction step. Note that this might perform zero corrections,
         and might perform many. It depends on how many measurements
@@ -211,37 +215,134 @@ class EKFSLAM:
 
         The first time we see a landmark, we initialize that landmark.
         So we do not perform a correction step with it.
+
+        cov_itsc defines whether or not to use the covariance
+        intersection algorithm.
         """
         meas, meas_cov = self.robot.get_meas(t)
+        n_corrections = 0
         for landmark in meas:
             # run the correction step as many times as there are measurements
             lidx, r, b = landmark
+
             # omitting 11 and 17 because these measurements are switched!
             if lidx <= 5 or lidx == 11 or lidx == 17:
                 continue  # we're not using robot measurements
 
+            est_state, est_cov, n = self.correct_with_landmark(est_state,
+                                                               est_cov,
+                                                               lidx, r, b,
+                                                               meas_cov)
+            n_corrections += n
 
-            if not self.landmark_seen[lidx]:
-                # perform first-time initialization:
-                lx_idx = self.state_labels.index(f"x_{lidx}")
-                ly_idx = self.state_labels.index(f"y_{lidx}")
-                x, y, theta = est_state[:3]
-                est_state[lx_idx] = x + r * np.cos(theta + b)
-                est_state[ly_idx] = y + r * np.sin(theta + b)
-                self.landmark_seen[lidx] = True
-                return est_state, est_cov, 0
+        # if other_robots is not an empty list, query each robot
+        if t > 0:
+            for other_robot in self.robot.other_robots:
+                other_meas, other_meas_cov = other_robot.get_meas(t-1)
+                if len(other_meas) != 0:
+                    measured_landmarks = list(zip(*other_meas))[0]
+                else:
+                    measured_landmarks = []
+                if self.robot.my_idx in measured_landmarks:
+                    pdb.set_trace()
+                    this_meas_idx = measured_landmarks.index(self.robot.my_idx)
+                    lidx, r, b = other_meas[this_meas_idx]
+                    other_pos_est, other_pos_cov = other_robot.get_est_pos(t-1)
+                    self.correct_with_other_robot(est_state, est_cov,
+                                                  other_pos_est, other_pos_cov,
+                                                  r, b, other_meas_cov,
+                                                  cov_itsc=cov_itsc)
+                    n_corrections += 1
 
-            # pdb.set_trace()
-            measurement = np.array([r, b])
-            Ht = self.calc_meas_jacobian(est_state, lidx)
-            meas_prediction = self.calc_meas_prediction(est_state, lidx)
+        return est_state, est_cov, n_corrections
 
-            Kt = est_cov @ Ht.T @ np.linalg.inv(Ht @ est_cov @ Ht.T + meas_cov)
-            est_state = est_state + Kt @ (measurement - meas_prediction)
-            est_cov = (np.identity(len(est_state)) - Kt @ Ht) @ est_cov
-            est_state[2] = self._angle_wrap(est_state[2])
+    def correct_with_other_robot(self, est_state, est_cov, other_pos_est,
+                                 other_pos_cov, r, b, other_meas_cov,
+                                 cov_itsc=False):
+        """
+        do the math in section 3.5 of the paper, with minor modifications
+        """
+        pdb.set_trace()
 
-        return est_state, est_cov, len(meas)
+        x_i, y_i, theta_i = other_pos_est  # the other robot's position est
+        # get the other robot's estimate of where this robot is.
+        # this is slightly different from eq (16) in the paper since
+        # we do not assume we have access to a bearing measurement of the
+        # other robot.
+        x_bar_ji = np.array([
+            x_i + r * np.cos(theta_i + b),
+            y_i + r * np.sin(theta_i + b),
+            est_state[2]  # just use from the prediction step! TODO?
+        ])
+
+        # get the covariance of the preceeding estimate.
+        psi = theta_i + b
+        F_ij = np.array(
+            [1, 0, -r * np.sin(psi)],
+            [0, 1,  r * np.cos(psi)],
+            [0, 0,                1]
+        )
+
+        # the bottom row (partial of the heading estimation w.r.t. range
+        # and bearing measurements) has been set to zeros. TODO?
+        S_ij = np.array(
+            [np.cos(psi), -r*np.sin(psi), 0],
+            [np.sin(psi),  r*np.cos(psi), 0],
+            [0, 0, 0]
+        )
+
+        # the bottom row (covariance of this robot's bearning measurement
+        # of the other robot) is set to zero, since that is not used
+        # in the update.
+        iR_ij = np.array(
+            [other_meas_cov[0][0], 0, 0],
+            [0, other_meas_cov[1][1], 0],
+            [0, 0, 0]
+        )
+
+        P_ji = F_ij @ other_pos_cov @ F_ij.T + S_ij @ iR_ij @ S_ij.T
+
+        if cov_itsc:
+
+            # fused covariance
+            P_j = np.linalg.inv(self.omega * np.linalg.inv(est_cov) +
+                                (1 - self.omega) * np.linalg.inv(P_ji))
+
+            # fused position estimate
+            x_bar_j = P_j @ (
+                self.omega * np.linalg.inv(est_cov) * est_state[0:3]
+            ) + (1 - self.omega) * np.linalg.inv(P_ji) * x_bar_ji
+
+        else:
+            raise NotImplementedError("not yet implemented the naive method")
+
+        # only the position stuff (not other landmark stuff) gets updated:
+        est_state[0:3] = x_bar_j
+        est_cov[0:3][0:3] = P_j
+
+        return est_state, est_cov, 1
+
+    def correct_with_landmark(self, est_state, est_cov, lidx, r, b, meas_cov):
+        if not self.landmark_seen[lidx]:
+            # perform first-time initialization:
+            lx_idx = self.state_labels.index(f"x_{lidx}")
+            ly_idx = self.state_labels.index(f"y_{lidx}")
+            x, y, theta = est_state[:3]
+            est_state[lx_idx] = x + r * np.cos(theta + b)
+            est_state[ly_idx] = y + r * np.sin(theta + b)
+            self.landmark_seen[lidx] = True
+            return est_state, est_cov, 0
+
+        # pdb.set_trace()
+        measurement = np.array([r, b])
+        Ht = self.calc_meas_jacobian(est_state, lidx)
+        meas_prediction = self.calc_meas_prediction(est_state, lidx)
+
+        Kt = est_cov @ Ht.T @ np.linalg.inv(Ht @ est_cov @ Ht.T + meas_cov)
+        est_state = est_state + Kt @ (measurement - meas_prediction)
+        est_cov = (np.identity(len(est_state)) - Kt @ Ht) @ est_cov
+        est_state[2] = self._angle_wrap(est_state[2])
+        return est_state, est_cov, 1
 
     def get_est_pos(self, t):
         """
