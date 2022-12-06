@@ -1,13 +1,13 @@
 import numpy as np
+from rich import print
 # from tqdm import tqdm
 
 import pdb
 
-
 class EKFSLAM:
     # keep a whole separate state estimation class
     # so that this can be easily replaced
-    def __init__(self, robot, gt=False, omega=0.1):
+    def __init__(self, robot, gt=False):
         """
         initialize, keep track of state and covariance for all time steps.
 
@@ -16,12 +16,8 @@ class EKFSLAM:
         (so that the estimator has the global coordinate reference frame) but
         all landmarks are initialized with their measured value, the first time
         they are observed.
-
-        omega is only used in the case of covariance intersection. It is between
-        0 and 1.
         """
         self.robot = robot
-        self.omega = omega
         self.t = 0
         self.state_labels = ["x", "y", "theta"] + \
             [f"{meas}_{num+1}" for num in range(5, 20) for meas in ["x", "y"]]
@@ -157,7 +153,7 @@ class EKFSLAM:
         b = np.arctan2(ly - y, lx - x) - theta
         return np.array([r, b])
 
-    def iterate(self, debug=False):
+    def iterate(self, debug=False, correct=True):
         """
         move forward a single time step
         (perform a prediction and correction step).
@@ -167,9 +163,15 @@ class EKFSLAM:
 
         est_state, est_cov = self.predict(old_state, old_cov, self.t,
                                           debug=debug)
-        new_state, new_cov, n_corrections = self.correct(est_state,
-                                                         est_cov, self.t,
-                                                         debug=debug)
+        if correct:
+            new_state, new_cov, n_corrections = self.correct(est_state,
+                                                             est_cov, self.t,
+                                                             debug=debug)
+        else:
+            new_state = est_state
+            new_cov = est_cov
+            n_corrections = 0
+
         self.state_hist[self.t] = new_state
         self.cov_hist[self.t] = new_cov
         return n_corrections
@@ -202,12 +204,12 @@ class EKFSLAM:
 
         state_est[2] = self._angle_wrap(state_est[2])
 
-        if debug:
-            print(f"{odometry=} \n\n {Gx=} \n\n {Gu=} \n\n {state_est=}")
+        # if debug:
+        #     print(f"{odometry=} \n\n {Gx=} \n\n {Gu=} \n\n {state_est=}")
         return state_est, cov_est
 
     def correct(self, est_state, est_cov, t,
-                debug=False, cov_itsc=False):
+                debug=False, cov_itsc=True):
         """
         Correction step. Note that this might perform zero corrections,
         and might perform many. It depends on how many measurements
@@ -244,7 +246,6 @@ class EKFSLAM:
                 else:
                     measured_landmarks = []
                 if self.robot.my_idx in measured_landmarks:
-                    pdb.set_trace()
                     this_meas_idx = measured_landmarks.index(self.robot.my_idx)
                     lidx, r, b = other_meas[this_meas_idx]
                     other_pos_est, other_pos_cov = other_robot.get_est_pos(t-1)
@@ -258,11 +259,10 @@ class EKFSLAM:
 
     def correct_with_other_robot(self, est_state, est_cov, other_pos_est,
                                  other_pos_cov, r, b, other_meas_cov,
-                                 cov_itsc=False):
+                                 cov_itsc=True):
         """
         do the math in section 3.5 of the paper, with minor modifications
         """
-        pdb.set_trace()
 
         x_i, y_i, theta_i = other_pos_est  # the other robot's position est
         # get the other robot's estimate of where this robot is.
@@ -277,48 +277,73 @@ class EKFSLAM:
 
         # get the covariance of the preceeding estimate.
         psi = theta_i + b
-        F_ij = np.array(
+        F_ij = np.array([
             [1, 0, -r * np.sin(psi)],
             [0, 1,  r * np.cos(psi)],
             [0, 0,                1]
-        )
+        ])
 
         # the bottom row (partial of the heading estimation w.r.t. range
         # and bearing measurements) has been set to zeros. TODO?
-        S_ij = np.array(
+        S_ij = np.array([
             [np.cos(psi), -r*np.sin(psi), 0],
             [np.sin(psi),  r*np.cos(psi), 0],
-            [0, 0, 0]
-        )
+            [0, 1, -1]  # [0, 0, 0]
+        ])
 
         # the bottom row (covariance of this robot's bearning measurement
         # of the other robot) is set to zero, since that is not used
         # in the update.
-        iR_ij = np.array(
+        iR_ij = np.array([
             [other_meas_cov[0][0], 0, 0],
             [0, other_meas_cov[1][1], 0],
-            [0, 0, 0]
-        )
+            [0, 0, other_meas_cov[1][1]]  # [0, 0, 0]
+        ])
 
         P_ji = F_ij @ other_pos_cov @ F_ij.T + S_ij @ iR_ij @ S_ij.T
 
         if cov_itsc:
+            traces = []  # brute force optimize omega
+            omegas = np.linspace(0, 1)
+            for omega in omegas:
+                # fused covariance
+                try:
+                    P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
+                                        (1 - omega) * np.linalg.inv(P_ji))
+                except:
+                    pdb.set_trace()
+                traces += [np.trace(P_j)]
+            best_trace_idx = np.argmin(traces)
+            omega = omegas[best_trace_idx]
+            try:
+                P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
+                                    (1 - omega) * np.linalg.inv(P_ji))
+            except:
+                pdb.set_trace()
+            # pdb.set_trace()
+            if omega == 1:
+                pass
+            #     print("Warning! Covariance Intersection" +
+            #           f"is increasing covariance ({omega=})")
+            #     print(f"{P_ji=}, {est_cov[0:3,0:3]=}")
+            else:
+                print(f"covariance intersection worked! ({omega=})")
+                # pdb.set_trace()
 
-            # fused covariance
-            P_j = np.linalg.inv(self.omega * np.linalg.inv(est_cov) +
-                                (1 - self.omega) * np.linalg.inv(P_ji))
-
-            # fused position estimate
-            x_bar_j = P_j @ (
-                self.omega * np.linalg.inv(est_cov) * est_state[0:3]
-            ) + (1 - self.omega) * np.linalg.inv(P_ji) * x_bar_ji
+            # fused position estimate.
+            x_bar_j = P_j @ ((
+                omega * np.linalg.inv(est_cov[0:3, 0:3]) @
+                est_state[0:3, np.newaxis]) +
+                             ((1 - omega) * np.linalg.inv(P_ji) @
+                              x_bar_ji[:, np.newaxis]))
+            x_bar_j[2] = self._angle_wrap(x_bar_j[2])
 
         else:
             raise NotImplementedError("not yet implemented the naive method")
 
         # only the position stuff (not other landmark stuff) gets updated:
-        est_state[0:3] = x_bar_j
-        est_cov[0:3][0:3] = P_j
+        est_state[0:3] = x_bar_j.flatten()
+        est_cov[0:3, 0:3] = P_j
 
         return est_state, est_cov, 1
 

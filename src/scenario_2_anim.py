@@ -8,12 +8,15 @@ import code
 from visualize import SceneAnimation
 import robot
 
-fs = 10
-# example usage
+fs=10
 dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
-robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt)
-          for df in dfs]
-# robots = [robot.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)]
+robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt, my_idx=i+1) for i, df in enumerate(dfs)]
+
+for robot in robots:
+    other_robots = robots.copy()
+    other_robots.remove(robot)
+    robot.other_robots = other_robots
+
 for t in tqdm(range(robots[0].tot_time - 1)):
     for r in robots:
         r.next()
