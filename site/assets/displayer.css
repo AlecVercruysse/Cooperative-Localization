@@ -1,0 +1,15 @@
+.displayer label:nth-child(1) {
+    background-color: rgba(0, 255, 0, 0.4);
+}
+
+.displayer label:nth-child(2) {
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.displayer label:nth-child(3) {
+    background-color: rgba(255, 0, 0, 0.4);
+}
+
+.displayer label:nth-child(4) {
+    background-color: rgba(0, 0, 255, 0.4);
+}
