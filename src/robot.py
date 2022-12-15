@@ -13,6 +13,7 @@ class Robot:
                  other_robots=[],
                  my_idx=None,
                  gt_initialization=False,
+                 basic_robot=False,
                  meas_map_correction = lambda x: x):
         """
         Other_robots is a list of other robot objects. This list contains
@@ -33,6 +34,7 @@ class Robot:
         self.other_robots = other_robots
         self.my_idx = my_idx
         self.meas_map_correction = meas_map_correction
+        self.basic_robot = basic_robot
 
     def get_odom(self, t):
         """
@@ -72,6 +74,11 @@ class Robot:
         meas_cov : 2x2 array
            covariance matrix of (range, bearing) uncertainty.
         """
+        meas_cov = np.eye(2) * 0.2  # TODO!!!!!!!
+        if self.basic_robot:
+            return [], meas_cov
+
+        # if its not a basic robot:
         s = self.df.iloc[t]
         meas = [(i+1, s[f"r_{i+1}"], s[f"b_{i+1}"])
                 for i in range(20)
@@ -80,7 +87,6 @@ class Robot:
         # correct measurement mapping if needed.
         meas = [(self.meas_map_correction(i),
                  a, b) for i, a, b in meas]
-        meas_cov = np.eye(2) * 0.2  # TODO!!!!!!!
         return meas, meas_cov
 
     def get_gt(self, t):

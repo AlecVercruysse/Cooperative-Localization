@@ -33,7 +33,6 @@ class EKFSLAM:
 
         if gt:
             print("warning: using gt for initialization")
-            # pdb.set_trace()
             self.landmark_seen = [True for _ in range(20 + 1)]
             gt_x, gt_y, gt_theta = self.robot.get_gt(0)
             self.state_hist[0] = [gt_x, gt_y, gt_theta] + \
@@ -152,6 +151,7 @@ class EKFSLAM:
         lx, ly = est_state[lx_idx], est_state[ly_idx]
         r = np.sqrt((lx - x)**2 + (ly - y)**2)
         b = np.arctan2(ly - y, lx - x) - theta
+        b = self._angle_wrap(b)
         return np.array([r, b])
 
     def iterate(self, debug=False, correct=True):
@@ -185,7 +185,6 @@ class EKFSLAM:
         """
         The nonlinear state propagation function.
         """
-        # pdb.set_trace()
         est_state = np.copy(old_state)
         x, y, theta = old_state[:3]
         est_state[:3] = old_state[:3] + \
@@ -323,7 +322,6 @@ class EKFSLAM:
             omega = omegas[best_trace_idx]
             P_j = np.linalg.inv(omega * np.linalg.inv(est_cov[0:3, 0:3]) +
                                 (1 - omega) * np.linalg.inv(P_ji))
-            # pdb.set_trace()
             if omega == 1:
                 pass
             else:
@@ -364,7 +362,6 @@ class EKFSLAM:
         # of the landmark. Its a "correction step" but CI will choose
         # to completely use the measurement since we set the covariance
         # of the "prediction step" to be high. A bit hacky...
-        # pdb.set_trace()
         lm_pos, lm_cov, _ = self.correct_with_other_robot(np.zeros(3),
                                                           np.eye(3)*1000,
                                                           est_state[:3],
@@ -386,7 +383,6 @@ class EKFSLAM:
                                                           meas_cov)
             return est_state, est_cov, 0
 
-        # pdb.set_trace()
         measurement = np.array([r, b])
         Ht = self.calc_meas_jacobian(est_state, lidx)
         meas_prediction = self.calc_meas_prediction(est_state, lidx)
