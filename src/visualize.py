@@ -120,7 +120,7 @@ class RobotVisual:
         cov = cov[:2, :2]  # just x, y
         alpha, major, minor = get_cov_ellipse_params(x, y, cov)
         self.est_pos.set_center((x, y))
-        self.est_pos.set_angle(alpha)
+        self.est_pos.set_angle(np.rad2deg(alpha))
         self.est_pos.set_width(major)
         self.est_pos.set_height(minor)
         self.est_pose.set_data([x, x+self.wheelbase/2*np.cos(theta)],

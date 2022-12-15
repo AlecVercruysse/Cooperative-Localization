@@ -4,6 +4,7 @@ from rich import print
 
 import pdb
 
+
 class EKFSLAM:
     # keep a whole separate state estimation class
     # so that this can be easily replaced
@@ -164,9 +165,6 @@ class EKFSLAM:
 
         est_state, est_cov = self.predict(old_state, old_cov, self.t,
                                           debug=debug)
-        # DEBUG!
-        # if old_cov[1, 1] > old_cov[0, 0] and est_cov[0, 0] > est_cov[1, 1]:
-        #     print(f"major covariance changed axes at time {self.t}!")
 
         if correct:
             new_state, new_cov, n_corrections = self.correct(est_state,
@@ -388,7 +386,9 @@ class EKFSLAM:
         meas_prediction = self.calc_meas_prediction(est_state, lidx)
 
         Kt = est_cov @ Ht.T @ np.linalg.inv(Ht @ est_cov @ Ht.T + meas_cov)
-        est_state = est_state + Kt @ (measurement - meas_prediction)
+        meas_residual = measurement - meas_prediction
+        meas_residual[1] = self._angle_wrap(meas_residual[1])  # delta bearing
+        est_state = est_state + Kt @ meas_residual
         est_cov = (np.identity(len(est_state)) - Kt @ Ht) @ est_cov
         est_state[2] = self._angle_wrap(est_state[2])
         return est_state, est_cov, 1
