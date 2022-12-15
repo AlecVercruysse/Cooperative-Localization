@@ -51,7 +51,7 @@ robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt,
 for bot in robots:
     other_robots = robots.copy()
     other_robots.remove(bot)
-    robot.other_robots = other_robots
+    bot.other_robots = other_robots
 
 scene = visualize.SceneAnimation(robots, landmark_gt, title="EKF SLAM",
                                  plot_est_pos=True,
