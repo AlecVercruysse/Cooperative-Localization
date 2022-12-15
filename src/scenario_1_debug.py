@@ -39,8 +39,9 @@ def meas_map_correction(idx):
     else:
         return idx
     
-robots = [robot.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt, meas_map_correction=meas_map_correction)]
-# robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt, gt_initialization=False) for df in dfs]
+# robots = [robot.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt, meas_map_correction=meas_map_correction)]
+robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt, gt_initialization=False, my_idx=i+1)
+          for i, df in enumerate(dfs)]
 scene = visualize.SceneAnimation(robots, landmark_gt, title="EKF SLAM",
                                  plot_est_pos=True,
                                  plot_est_landmarks=True,

@@ -83,7 +83,7 @@ class RobotVisual:
                                  radius=self.wheelbase/2,
                                  facecolor=color,
                                  edgecolor="black",
-                                 label=f"Robot {self.name}")
+                                 label=f"Robot {self.robot.my_idx}")
         self.line = plt.Line2D([self.x,
                                 self.x+self.wheelbase/2*np.cos(self.theta)],
                                [self.y,
@@ -265,11 +265,11 @@ class SceneAnimation:
     """
 
     def __init__(self, robots, landmark_gt, title="",
-                 speedup=20, fs=50, undersample=100,
+                 speedup=20, fs=50, undersample=20,
                  run_time=None,
-                 plot_est_pos=False, plot_est_landmarks=False,
+                 plot_est_pos=True, plot_est_landmarks=True,
                  plot_landmark_uncertainty=False,
-                 plot_measurements=False,
+                 plot_measurements=True,
                  only_robot_measurements=False,
                  figsize=(5, 8), debug=False,
                  keys=["gt_x", "gt_y", "gt_theta"]):
@@ -363,7 +363,7 @@ class SceneAnimation:
         self.anim_robots = []
         for i in range(len(self.robots)):
             r = RobotVisual(self.ax, self.robots[i],
-                            name=f"{i+1}", color=colors[i],
+                            name=f"{i+1}", color=colors[self.robots[i].my_idx-1],
                             plot_est_pos=self.plot_est_pos,
                             plot_est_landmarks=self.plot_est_landmarks,
                             plot_measurements=self.plot_measurements,

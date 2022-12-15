@@ -46,7 +46,7 @@ robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt,
                       my_idx=i+1,
                       basic_robot=(i > 0)
                       ) for i, df in enumerate(dfs)]
-# robots = [robots[4]]
+robots = [robots[1]]
 
 for bot in robots:
     other_robots = robots.copy()
