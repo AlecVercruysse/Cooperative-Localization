@@ -20,6 +20,8 @@ import visualize
 import matplotlib.pyplot as plt
 import sys
 
+import pdb
+
 # weird issue with non responsive plots when using the default
 # mac backend... this is not an issue on linux.
 if sys.platform == "darwin":
@@ -28,11 +30,21 @@ if sys.platform == "darwin":
     
 fs = 10
 dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
-#r = Robot(dfs[0], fs=fs, landmark_gt=landmark_gt)
-robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt, gt_initialization=True) for df in dfs]
+
+def meas_map_correction(idx):
+    if idx == 11:
+        return 17
+    elif idx == 17:
+        return 11
+    else:
+        return idx
+    
+robots = [robot.Robot(dfs[0], fs=fs, landmark_gt=landmark_gt, meas_map_correction=meas_map_correction)]
+# robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt, gt_initialization=False) for df in dfs]
 scene = visualize.SceneAnimation(robots, landmark_gt, title="EKF SLAM",
                                  plot_est_pos=True,
                                  plot_est_landmarks=True,
+                                 plot_landmark_uncertainty=True,
                                  plot_measurements=True,
                                  debug=True, fs=fs)
 plt.ion()

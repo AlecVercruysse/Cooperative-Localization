@@ -8,7 +8,12 @@ from ekf import EKFSLAM
 
 class Robot:
 
-    def __init__(self, df, fs, landmark_gt=None, other_robots=[], my_idx=None, gt_initialization=False):
+    def __init__(self, df, fs,
+                 landmark_gt=None,
+                 other_robots=[],
+                 my_idx=None,
+                 gt_initialization=False,
+                 meas_map_correction = lambda x: x):
         """
         Other_robots is a list of other robot objects. This list contains
         the other robots that this robot will query to see if they have measurement
@@ -27,6 +32,7 @@ class Robot:
         )
         self.other_robots = other_robots
         self.my_idx = my_idx
+        self.meas_map_correction = meas_map_correction
 
     def get_odom(self, t):
         """
@@ -70,6 +76,10 @@ class Robot:
         meas = [(i+1, s[f"r_{i+1}"], s[f"b_{i+1}"])
                 for i in range(20)
                 if not np.isnan(s[f"r_{i+1}"])]
+
+        # correct measurement mapping if needed.
+        meas = [(self.meas_map_correction(i),
+                 a, b) for i, a, b in meas]
         meas_cov = np.eye(2) * 0.2  # TODO!!!!!!!
         return meas, meas_cov
 

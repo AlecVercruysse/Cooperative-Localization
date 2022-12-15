@@ -47,7 +47,7 @@ class EKFSLAM:
             gt_x, gt_y, gt_theta = self.robot.get_gt(0)
             self.state_hist[0][:3] = (gt_x, gt_y, gt_theta)
             self.cov_hist[0] = np.eye(len(self.state_labels)) * \
-                np.array([1 if i+1 >= 6 else .1
+                np.array([0 if i >= 2 else .1
                           for i in range(len(self.state_labels))])
 
     def calc_prop_Gx(self, old_state, t):
@@ -164,6 +164,10 @@ class EKFSLAM:
 
         est_state, est_cov = self.predict(old_state, old_cov, self.t,
                                           debug=debug)
+        # DEBUG!
+        # if old_cov[1, 1] > old_cov[0, 0] and est_cov[0, 0] > est_cov[1, 1]:
+        #     print(f"major covariance changed axes at time {self.t}!")
+
         if correct:
             new_state, new_cov, n_corrections = self.correct(est_state,
                                                              est_cov, self.t,
@@ -229,7 +233,8 @@ class EKFSLAM:
             lidx, r, b = landmark
 
             # omitting 11 and 17 because these measurements are switched!
-            if lidx <= 5 or lidx == 11 or lidx == 17:
+            # (should now be fixed by meas_map_correction in Robot class)
+            if lidx <= 5:  # or lidx == 11 or lidx == 17:
                 continue  # we're not using robot measurements
 
             est_state, est_cov, n = self.correct_with_landmark(est_state,
@@ -343,15 +348,42 @@ class EKFSLAM:
 
         return est_state, est_cov, 1
 
+    def initialize_landmark(self, est_state, est_cov, lidx, r, b, meas_cov):
+        """
+        if the landmark is not yet seen, but we just got a measurement,
+        this function is called and the landmark is initialized.
+        """
+        lx_idx = self.state_labels.index(f"x_{lidx}")
+        ly_idx = self.state_labels.index(f"y_{lidx}")
+        x, y, theta = est_state[:3]
+
+        # update state and state covariance:
+        # literally just reuse the math for the correction step
+        # for if another robot was looking at us. In this case
+        # we're the other robot and we're estiamting the state
+        # of the landmark. Its a "correction step" but CI will choose
+        # to completely use the measurement since we set the covariance
+        # of the "prediction step" to be high. A bit hacky...
+        # pdb.set_trace()
+        lm_pos, lm_cov, _ = self.correct_with_other_robot(np.zeros(3),
+                                                          np.eye(3)*1000,
+                                                          est_state[:3],
+                                                          est_cov[0:3, 0:3],
+                                                          r, b,
+                                                          meas_cov)
+        est_state[lx_idx] = lm_pos[0]  # x + r * np.cos(theta + b)
+        est_state[ly_idx] = lm_pos[1]  # y + r * np.sin(theta + b)
+        est_cov[lx_idx:ly_idx+1, lx_idx:ly_idx+1] = lm_cov[:2, :2]
+        self.landmark_seen[lidx] = True
+        return est_state, est_cov
+
     def correct_with_landmark(self, est_state, est_cov, lidx, r, b, meas_cov):
         if not self.landmark_seen[lidx]:
             # perform first-time initialization:
-            lx_idx = self.state_labels.index(f"x_{lidx}")
-            ly_idx = self.state_labels.index(f"y_{lidx}")
-            x, y, theta = est_state[:3]
-            est_state[lx_idx] = x + r * np.cos(theta + b)
-            est_state[ly_idx] = y + r * np.sin(theta + b)
-            self.landmark_seen[lidx] = True
+            est_state, est_cov = self.initialize_landmark(est_state,
+                                                          est_cov,
+                                                          lidx, r, b,
+                                                          meas_cov)
             return est_state, est_cov, 0
 
         # pdb.set_trace()

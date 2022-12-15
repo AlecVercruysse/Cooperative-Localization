@@ -42,6 +42,7 @@ class RobotVisual:
     def __init__(self, ax, robot, name="", color="red",
                  plot_est_pos=False,
                  plot_est_landmarks=False,
+                 plot_landmark_uncertainty=False,
                  plot_measurements=False,
                  only_robot_measurements=False):
         """
@@ -70,6 +71,7 @@ class RobotVisual:
         self.robot = robot
         self.plot_est_pos = plot_est_pos
         self.plot_est_landmarks = plot_est_landmarks
+        self.plot_landmark_uncertainty = plot_landmark_uncertainty
         self.plot_measurements = plot_measurements
         self.only_robot_measurements = only_robot_measurements
         self.x, self.y, self.theta = self.robot.get_gt(0)
@@ -128,10 +130,15 @@ class RobotVisual:
         self.landmarks = np.array(range(5, 20)) + 1
         names, info = zip(*[(idx, self.robot.get_est_landmark(0, idx))
                             for idx in self.landmarks])
-        location, cov = zip(*info)  # don't use covariance for now
+        location, cov = zip(*info)
         x, y = np.array(location).T
 
-        self.landmark_est = self.ax.scatter(x, y, color=self.color)
+        if not self.plot_landmark_uncertainty:
+            self.landmark_est = self.ax.scatter(x, y, color=self.color)
+        else:
+            self.landmark_est = [get_cov_ellipse(xi, yi, covi,
+                                                 color=self.color, opacity=0.1)
+                                 for xi, yi, covi in zip(x, y, cov)]
         self.landmark_labels = []
         for name, xi, yi in zip(names, x, y):
             self.landmark_labels += [plt.annotate(int(name), (xi, yi),
@@ -140,9 +147,22 @@ class RobotVisual:
     def update_est_landmarks(self, frame):
         names, info = zip(*[(idx, self.robot.get_est_landmark(frame, idx))
                             for idx in self.landmarks])
-        location, cov = zip(*info)  # don't use covariance for now
+        location, cov = zip(*info)
         x, y = np.array(location).T
-        self.landmark_est.set_offsets(np.array([x, y]).T)
+        if not self.plot_landmark_uncertainty:
+            self.landmark_est.set_offsets(np.array([x, y]).T)
+        else:
+            params = [get_cov_ellipse_params(xi, yi, covi)
+                      for xi, yi, covi in zip(x, y, cov)]
+            for (alpha, major, minor), lm, xi, yi in zip(params,
+                                                         self.landmark_est,
+                                                         x, y):
+                # pdb.set_trace()
+                lm.set_center((xi, yi))
+                lm.set_angle(alpha)
+                lm.set_width(major)
+                lm.set_height(minor)
+            
         for i, (xi, yi) in enumerate(zip(x, y)):
             self.landmark_labels[i].set_position((xi, yi))
 
@@ -200,6 +220,9 @@ class RobotVisual:
         if self.plot_est_pos:
             self.ax.add_patch(self.est_pos)
             self.ax.add_line(self.est_pose)
+        if self.plot_landmark_uncertainty:
+            for lm in self.landmark_est:
+                self.ax.add_patch(lm)
 
     def update(self, frame):
         """
@@ -245,6 +268,7 @@ class SceneAnimation:
                  speedup=20, fs=50, undersample=100,
                  run_time=None,
                  plot_est_pos=False, plot_est_landmarks=False,
+                 plot_landmark_uncertainty=False,
                  plot_measurements=False,
                  only_robot_measurements=False,
                  figsize=(5, 8), debug=False,
@@ -292,6 +316,7 @@ class SceneAnimation:
         self.figsize = figsize
         self.plot_est_pos = plot_est_pos
         self.plot_est_landmarks = plot_est_landmarks
+        self.plot_landmark_uncertainty = plot_landmark_uncertainty
         self.plot_measurements = plot_measurements
         self.only_robot_measurements = only_robot_measurements
 
@@ -342,7 +367,8 @@ class SceneAnimation:
                             plot_est_pos=self.plot_est_pos,
                             plot_est_landmarks=self.plot_est_landmarks,
                             plot_measurements=self.plot_measurements,
-                            only_robot_measurements=self.only_robot_measurements)
+                            only_robot_measurements=self.only_robot_measurements,
+                            plot_landmark_uncertainty=self.plot_landmark_uncertainty)
             self.anim_robots += [r]
 
         for i in self.landmark_gt.index:
