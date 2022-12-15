@@ -6,7 +6,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import numpy as np
-import pdb
+
+import gunicorn
 
 def get_cov_ellipse_params(x, y, cov):
     """
@@ -89,6 +90,8 @@ def getitem(name, rgb):
     
 app = Dash(__name__,
            external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
+app.title = "CI Widget"
 app.layout = html.Div([
     dbc.Row([
         html.H4('The Covariance Intersection Algorithm', style={"text-align":"center"}),
@@ -197,4 +200,5 @@ def update_fig(x1, y1, corr1, x2, y2, corr2, x2pos, y2pos, display_options):
     
     return fig
 
-app.run_server(debug=True)
+if __name__ == "__main__":
+    app.run_server(debug=True, port=8050)
