@@ -29,6 +29,8 @@ class EKFSLAM:
                                   len(self.state_labels),
                                   len(self.state_labels)))
 
+        self.omega_hist = np.zeros(self.robot.tot_time)
+
         # use one-indexed landmark idx (a couple indeces are unused).
         self.landmark_seen = [False for _ in range(20 + 1)]
 
@@ -167,9 +169,10 @@ class EKFSLAM:
                                           debug=debug)
 
         if correct:
-            new_state, new_cov, n_corrections = self.correct(est_state,
+            new_state, new_cov, n_corrections, omega = self.correct(est_state,
                                                              est_cov, self.t,
                                                              debug=debug)
+            self.omega_hist[self.t] = omega
         else:
             new_state = est_state
             new_cov = est_cov
@@ -241,6 +244,7 @@ class EKFSLAM:
             n_corrections += n
 
         # if other_robots is not an empty list, query each robot
+        omega = -1
         if t > 0:
             for other_robot in self.robot.other_robots:
                 other_meas, other_meas_cov = other_robot.get_meas(t-1)
@@ -252,14 +256,14 @@ class EKFSLAM:
                     this_meas_idx = measured_landmarks.index(self.robot.my_idx)
                     lidx, r, b = other_meas[this_meas_idx]
                     other_pos_est, other_pos_cov = other_robot.get_est_pos(t-1)
-                    self.correct_with_other_robot(est_state, est_cov,
+                    _, _, omega = self.correct_with_other_robot(est_state, est_cov,
                                                   other_pos_est, other_pos_cov,
                                                   r, b, other_meas_cov,
                                                   cov_itsc=cov_itsc,
                                                   debug=debug)
                     n_corrections += 1
 
-        return est_state, est_cov, n_corrections
+        return est_state, est_cov, n_corrections, omega
 
     def correct_with_other_robot(self, est_state, est_cov, other_pos_est,
                                  other_pos_cov, r, b, other_meas_cov,
@@ -342,7 +346,7 @@ class EKFSLAM:
         est_state[0:3] = x_bar_j.flatten()
         est_cov[0:3, 0:3] = P_j
 
-        return est_state, est_cov, 1
+        return est_state, est_cov, omega
 
     def initialize_landmark(self, est_state, est_cov, lidx, r, b, meas_cov):
         """
