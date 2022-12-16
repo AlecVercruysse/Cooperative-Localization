@@ -53,7 +53,7 @@ class Robot:
            covariance matrix of odometry estimates.
         """
         odom = self.df.iloc[t][["v", "w"]]
-        odom_cov = np.eye(len(odom)) * 0.4  # TODO odometry covariance!
+        odom_cov = np.array([[1e-2, 0], [0, 5e-3]])
         return odom, odom_cov
 
     def get_meas(self, t):
@@ -74,7 +74,7 @@ class Robot:
         meas_cov : 2x2 array
            covariance matrix of (range, bearing) uncertainty.
         """
-        meas_cov = np.eye(2) * 0.2  # TODO!!!!!!!
+        meas_cov = np.array([[1e-1,0],[0,8e-3]])
         if self.basic_robot:
             return [], meas_cov
 

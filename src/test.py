@@ -12,16 +12,6 @@ def meas_map_correction(idx):
     else:
         return idx
 
-
-# ground-truth ################################################################
-# Just robot 2, with landmark uncertainty
-animate.write_animation("../output/ground_truth.mp4", dfs, landmark_gt,
-                        animation_options={"plot_est_pos": False,
-                                           "plot_est_landmarks": False},
-                        robot_options={"meas_map_correction": meas_map_correction},
-                        title="Dataset 1")
-quit()
-
 # Scenario 1 ##################################################################
 # Just robot 2, with landmark uncertainty
 animate.write_animation("../output/scenario_1_robot_2.mp4", dfs, landmark_gt,
@@ -49,7 +39,7 @@ animate.write_animation("../output/scenario_2_all_robots.mp4", dfs, landmark_gt,
                         title="Scenario 2, Dataset 1, 10Hz")
 
 # All robots, no landmark uncertainty, ground-truth-initialization
-animate.write_animation("../output/scenario_1_all_robots_gt_init.mp4", dfs, landmark_gt,
+animate.write_animation("../output/scenario_2_all_robots_gt_init.mp4", dfs, landmark_gt,
                         robot_options={"meas_map_correction": meas_map_correction,
                                        "gt_initialization": True},
                         do_ci=True,
@@ -70,3 +60,11 @@ animate.write_animation("../output/scenario_3_all_robots_gt_init.mp4", dfs, land
                         basic_robots=[0, 2, 3, 4],
                         do_ci=True,
                         title="Scenario 3, Dataset 1, 10Hz, GT init.")
+
+# ground-truth ################################################################
+# Just robot 2, with landmark uncertainty
+animate.write_animation("../output/ground_truth.mp4", dfs, landmark_gt,
+                        animation_options={"plot_est_pos": False,
+                                           "plot_est_landmarks": False},
+                        robot_options={"meas_map_correction": meas_map_correction},
+                        title="Dataset 1")

@@ -44,7 +44,7 @@ dfs, landmark_gt = file_tools.get_dataset(1, fs=fs)
 robots = [robot.Robot(df, fs=fs, landmark_gt=landmark_gt,
                       meas_map_correction=meas_map_correction,
                       my_idx=i+1) for i, df in enumerate(dfs)]
-robots = [robots[4]]
+# robots = [robots[4]]
 
 for robot in robots:
     other_robots = robots.copy()
