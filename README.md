@@ -1,4 +1,7 @@
 # Cooperative-Localization
+###  Arya Goutam, Alec Vercruysse, Jonathan Lo
+
+This is a final project for HMC's ENGR205: State Estimation, completed in Fall 2022.
 
 This project aims to study the problems of cooperative localization. Cooperative localization is when multiple robots work together to find out where they are. This project implements simultaneous localization and mapping, but in the experiments with robot cooperation, only cooperative localization is considered.
 
